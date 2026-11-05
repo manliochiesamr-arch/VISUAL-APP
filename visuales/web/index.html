@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Visuales">
+<link rel="manifest" href="/static/manifest.json">
+<link rel="apple-touch-icon" href="/static/icon.png">
+<link rel="stylesheet" href="/static/style.css">
+<title>Visuales</title>
+</head>
+<body>
+<header>
+  <div class="bpm-box">
+    <span id="beat" class="beat"></span>
+    <span id="bpm">120</span><small>BPM</small>
+  </div>
+  <button id="tap" class="tap">TAP</button>
+  <span id="conn" class="conn off" title="conexión"></span>
+  <button id="blackout" class="blackout">BLACKOUT</button>
+</header>
+
+<nav>
+  <button data-tab="show" class="on">Show</button>
+  <button data-tab="clip">Clip</button>
+  <button data-tab="fx">En vivo</button>
+  <button data-tab="lib">Biblioteca</button>
+</nav>
+
+<main>
+  <!-- SHOW -->
+  <section id="tab-show" class="tab on">
+    <div class="showbar">
+      <select id="show-sel"></select>
+      <button id="show-new" class="small">＋ Show</button>
+    </div>
+    <div id="grid" class="grid"></div>
+    <div class="mixer">
+      <div class="decks">
+        <div class="deck" id="deckA"><b>A</b><span class="dname">—</span></div>
+        <div class="deck" id="deckB"><b>B</b><span class="dname">—</span></div>
+      </div>
+      <div class="row">
+        <span class="lbl">A</span>
+        <div class="fader" id="f-xfade" data-cmd="xfade"></div>
+        <span class="lbl">B</span>
+      </div>
+      <div class="row go-row">
+        <button id="go" class="go">GO ▸</button>
+        <button id="cut" class="cut">CUT</button>
+        <div class="mini">
+          <span class="lbl">Fade <i id="v-fade_time">2.0s</i></span>
+          <div class="fader" id="f-fade_time" data-cmd="fade_time" data-max="10"></div>
+        </div>
+      </div>
+      <div class="row">
+        <span class="lbl w">Master</span>
+        <div class="fader" id="f-master" data-cmd="master"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CLIP: ajustes guardados con cada video -->
+  <section id="tab-clip" class="tab">
+    <div class="seg" id="clip-target"><button data-v="next">NEXT</button><button data-v="live">AL AIRE</button></div>
+    <div class="preview" id="preview"><img id="pv-img" alt=""><span id="pv-empty">Sin clip</span></div>
+    <p class="clipname" id="clip-name">—</p>
+    <div class="row"><span class="lbl w">Encuadre</span>
+      <div class="seg" id="cfit"><button data-v="fit">Entero</button><button data-v="fill">Llenar</button><button data-v="stretch">Estirar</button></div></div>
+    <div class="row"><span class="lbl w">Zoom <i id="v-czoom">1.00x</i></span><div class="fader" id="f-czoom" data-clip="zoom" data-min="0.5" data-max="4"></div></div>
+    <div class="row"><span class="lbl w">Posición ↔</span><div class="fader center" id="f-cpanx" data-clip="panx" data-min="-1" data-max="1"></div></div>
+    <div class="row"><span class="lbl w">Posición ↕</span><div class="fader center" id="f-cpany" data-clip="pany" data-min="-1" data-max="1"></div></div>
+    <div class="row"><span class="lbl w">Velocidad <i id="v-cspeed">1.00x</i></span><div class="fader" id="f-cspeed" data-clip="speed" data-max="3"></div></div>
+    <div class="row">
+      <button class="small wide" id="c-speed1">Velocidad 1x</button>
+      <button class="small wide" id="c-center">Centrar</button>
+      <button class="small wide" id="c-reset">Reset clip</button>
+    </div>
+    <p class="hint">Estos ajustes quedan guardados en el video: la próxima vez que lo cargues ya sale así. Los efectos de "En vivo" se suman encima.</p>
+  </section>
+
+  <!-- FX -->
+  <section id="tab-fx" class="tab">
+    <h3>Imagen</h3>
+    <div class="row"><span class="lbl w">Pantalla</span>
+      <div class="seg" id="screen"><button data-v="4:3">4:3 tubo</button><button data-v="16:9">16:9</button></div></div>
+
+    <h3>Zoom en vivo</h3>
+    <div class="row"><span class="lbl w">Zoom <i id="v-zoom">1.0x</i></span><div class="fader" id="f-zoom" data-cmd="zoom" data-min="1" data-max="4"></div><button class="small" id="zoom-reset">1x</button></div>
+    <div class="seg" id="zoom-mode">
+      <button data-v="fixed">Fijo</button><button data-v="pulse">Pulso</button><button data-v="in">&infin; In</button><button data-v="out">&infin; Out</button>
+    </div>
+    <div class="row"><span class="lbl w">Ciclo (beats)</span>
+      <div class="seg" id="zoom-cycle">
+        <button data-v="0.5">&frac12;</button><button data-v="1">1</button><button data-v="2">2</button><button data-v="4">4</button><button data-v="8">8</button><button data-v="16">16</button><button data-v="32">32</button>
+      </div></div>
+    <div class="row">
+      <button id="quake" class="toggle">TERREMOTO</button>
+      <div class="fader" id="f-quake" data-cmd="quake" data-key="amount"></div>
+    </div>
+    <p class="hint">Pulso e infinito siguen el BPM. Mantener TERREMOTO apretado = momentáneo.</p>
+
+    <h3>Tinte</h3>
+    <div class="swatches" id="swatches"></div>
+    <div class="row"><span class="lbl w">Cantidad</span><div class="fader" id="f-tint" data-cmd="tint" data-key="amount"></div></div>
+
+    <h3>Strobe</h3>
+    <div class="row">
+      <button id="strobe" class="toggle">STROBE</button>
+      <div class="seg" id="strobe-div">
+        <button data-v="0.25">1/4</button><button data-v="0.5">1/2</button><button data-v="1">1</button><button data-v="2">2</button><button data-v="4">4</button>
+      </div>
+    </div>
+    <div class="seg" id="strobe-color">
+      <button data-v="white">Blanco</button><button data-v="black">Negro</button><button data-v="tint">Tinte</button>
+    </div>
+    <p class="hint">Destellos por beat. Mantener STROBE apretado = strobe momentáneo.</p>
+
+
+    <h3>Blackout</h3>
+    <div class="row"><span class="lbl w">Fade <i id="v-blackout_time">1.0s</i></span><div class="fader" id="f-blackout_time" data-cmd="blackout_time" data-max="5"></div></div>
+
+    <h3>Tempo</h3>
+    <div class="row">
+      <button id="bpm-minus" class="small">−1</button>
+      <button id="resync" class="small wide">Beat 1 ahora</button>
+      <button id="bpm-plus" class="small">+1</button>
+      <button id="bpm-half" class="small">½</button>
+      <button id="bpm-double" class="small">×2</button>
+    </div>
+    <div class="row">
+      <button id="mic" class="toggle wide">🎤 Detectar BPM por micrófono</button>
+    </div>
+    <canvas id="mic-meter" width="300" height="40"></canvas>
+    <p class="hint" id="mic-hint">El micrófono requiere abrir la app por https (ver README).</p>
+  </section>
+
+  <!-- LIBRARY -->
+  <section id="tab-lib" class="tab">
+    <div id="show-admin"></div>
+    <label class="upload">
+      <input type="file" id="file" accept="video/mp4,.mp4" multiple>
+      <span>＋ Subir videos MP4</span>
+    </label>
+    <div id="uploads"></div>
+    <p class="hint" id="free"></p>
+    <ul id="liblist" class="liblist"></ul>
+  </section>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
