@@ -80,7 +80,7 @@ La app usa OpenGL (un shader hace la mezcla y los efectos). Si OpenGL no arranca
 3. Se abre una ventana con la **salida de video** (simula la TV) y el **control** en el navegador (http://localhost:8080). La primera vez se generan 4 clips de prueba.
 4. Para probar con el iPhone, conéctalo a la misma wifi que la PC y abre la dirección `http://192.168.x.x:8080` que muestra la consola. Si Windows pregunta por el firewall, permite el acceso en red privada.
 
-Los videos que subas en la prueba quedan en la carpeta `datos`, junto al .bat.
+Los videos y shows quedan guardados en `C:\Users\<tu usuario>\visuales-datos`, fuera de la carpeta del programa. Así no se pierden al actualizar o al bajar una versión nueva desde GitHub.
 
 ## Probar en un PC (Linux o Mac)
 

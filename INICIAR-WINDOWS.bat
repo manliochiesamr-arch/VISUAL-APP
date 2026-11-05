@@ -56,7 +56,13 @@ echo  Para el iPhone usa la direccion que aparece abajo. Si Windows pregunta por
 echo  Para salir: Esc en la ventana de video, o cerrar esta ventana.
 echo.
 start "" cmd /c "timeout /t 5 >nul & start http://localhost:8080"
-set "VISUALES_DATA=%~dp0datos"
+rem los videos y shows viven fuera de la carpeta del programa: sobreviven a actualizaciones
+set "VISUALES_DATA=%USERPROFILE%\visuales-datos"
+if exist "%~dp0datos\library.json" if not exist "%VISUALES_DATA%\library.json" (
+  echo Moviendo tus videos a %VISUALES_DATA% ...
+  move "%~dp0datos" "%VISUALES_DATA%" >nul
+)
+echo  Videos y shows guardados en: %VISUALES_DATA%
 ".venv\Scripts\python.exe" -m visuales --window --demo
 echo.
 echo Visuales se cerro.
