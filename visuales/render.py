@@ -1,6 +1,7 @@
-"""Salida de video. Dos implementaciones con el mismo resultado visual:
-- GLRenderer: OpenGL (moderngl), todo en un shader. Opcion principal.
-- SDLRenderer: blits de SDL en CPU. Respaldo si OpenGL no arranca en la placa.
+"""Salida de video. Tres implementaciones con el mismo resultado visual:
+- GLRenderer: OpenGL 3 (moderngl), Pi 4/5 y PC.
+- GL2Renderer: OpenGL 2.1 (PyOpenGL), para la GPU de la Pi 3 (VideoCore IV).
+- SDLRenderer: blits de SDL en CPU. Respaldo si OpenGL no arranca.
 """
 import logging
 import os
@@ -75,7 +76,7 @@ def fit_scale(clip_aspect, screen_aspect, mode):
     return (1.0, screen_aspect / clip_aspect) if wider else (clip_aspect / screen_aspect, 1.0)
 
 
-def open_window(cfg, opengl):
+def open_window(cfg, opengl, gl_version=(3, 1)):
     flags = pygame.DOUBLEBUF
     if opengl:
         flags |= pygame.OPENGL
@@ -85,9 +86,9 @@ def open_window(cfg, opengl):
         size = (0, 0)  # resolucion nativa del HDMI
 
     if opengl:
-        # la Pi 4 (V3D) expone GL 3.1; pedimos 3.1 core
-        pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MAJOR_VERSION, 3)
-        pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MINOR_VERSION, 1)
+        # Pi 4 (V3D): GL 3.1 ; Pi 3 (VC4): GL 2.1
+        pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MAJOR_VERSION, gl_version[0])
+        pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MINOR_VERSION, gl_version[1])
     screen = pygame.display.set_mode(size, flags, vsync=1)
     pygame.display.set_caption("visuales")
     pygame.mouse.set_visible(False)
@@ -152,6 +153,109 @@ class GLRenderer:
         self.ctx.viewport = (0, 0, *self.size)
         self.ctx.clear(0, 0, 0)
         self.vao.render(mode=self.ctx.TRIANGLE_STRIP)
+        pygame.display.flip()
+
+
+# GLSL 1.20 (OpenGL 2.1): mismo shader que FRAG, en el dialecto que entiende la Pi 3
+VERT2 = """
+#version 120
+attribute vec2 pos;
+varying vec2 uv;
+void main() {
+    uv = vec2(pos.x * 0.5 + 0.5, 0.5 - pos.y * 0.5);
+    gl_Position = vec4(pos, 0.0, 1.0);
+}
+"""
+FRAG2 = (FRAG.replace("#version 140", "#version 120")
+         .replace("in vec2 uv;", "varying vec2 uv;")
+         .replace("out vec4 color;", "")
+         .replace("texture(tex, tc)", "texture2D(tex, tc)")
+         .replace("color = vec4(", "gl_FragColor = vec4("))
+
+
+class GL2Renderer:
+    name = "gl2"
+
+    def __init__(self, cfg):
+        import ctypes
+        import OpenGL
+        OpenGL.ERROR_CHECKING = False
+        from OpenGL import GL
+        self.GL, self.ctypes = GL, ctypes
+        self.cfg = cfg
+        open_window(cfg, opengl=True, gl_version=(2, 1))
+        self.size = pygame.display.get_surface().get_size()
+        log.info("OpenGL: %s / %s", GL.glGetString(GL.GL_RENDERER), GL.glGetString(GL.GL_VERSION))
+        self.prog = self._program(VERT2, FRAG2)
+        GL.glUseProgram(self.prog)
+        import array
+        quad = array.array("f", [-1, -1, 1, -1, -1, 1, 1, 1])
+        self.vbo = GL.glGenBuffers(1)
+        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.vbo)
+        GL.glBufferData(GL.GL_ARRAY_BUFFER, len(quad) * 4, quad.tobytes(), GL.GL_STATIC_DRAW)
+        loc = GL.glGetAttribLocation(self.prog, "pos")
+        GL.glEnableVertexAttribArray(loc)
+        GL.glVertexAttribPointer(loc, 2, GL.GL_FLOAT, GL.GL_FALSE, 0, ctypes.c_void_p(0))
+        GL.glPixelStorei(GL.GL_UNPACK_ALIGNMENT, 1)
+        self.u = {n: GL.glGetUniformLocation(self.prog, n) for n in (
+            "texA", "texB", "hasA", "hasB", "fitA", "fitB", "clipA", "clipB", "zoom", "offset", "droste",
+            "xfade", "master", "tint", "tintAmount", "strobe", "strobeColor")}
+        GL.glUniform1i(self.u["texA"], 0)
+        GL.glUniform1i(self.u["texB"], 1)
+        self.tex = {}
+        for unit, k in enumerate("AB"):
+            GL.glActiveTexture(GL.GL_TEXTURE0 + unit)
+            t = GL.glGenTextures(1)
+            GL.glBindTexture(GL.GL_TEXTURE_2D, t)
+            for p, v in ((GL.GL_TEXTURE_MIN_FILTER, GL.GL_LINEAR), (GL.GL_TEXTURE_MAG_FILTER, GL.GL_LINEAR),
+                         (GL.GL_TEXTURE_WRAP_S, GL.GL_CLAMP_TO_EDGE), (GL.GL_TEXTURE_WRAP_T, GL.GL_CLAMP_TO_EDGE)):
+                GL.glTexParameteri(GL.GL_TEXTURE_2D, p, v)
+            self.tex[k] = {"id": t, "size": None, "serial": -1}
+
+    def _program(self, vs, fs):
+        GL = self.GL
+        prog = GL.glCreateProgram()
+        for src, kind in ((vs, GL.GL_VERTEX_SHADER), (fs, GL.GL_FRAGMENT_SHADER)):
+            sh = GL.glCreateShader(kind)
+            GL.glShaderSource(sh, src)
+            GL.glCompileShader(sh)
+            if not GL.glGetShaderiv(sh, GL.GL_COMPILE_STATUS):
+                raise RuntimeError("shader: %s" % GL.glGetShaderInfoLog(sh))
+            GL.glAttachShader(prog, sh)
+        GL.glLinkProgram(prog)
+        if not GL.glGetProgramiv(prog, GL.GL_LINK_STATUS):
+            raise RuntimeError("link: %s" % GL.glGetProgramInfoLog(prog))
+        return prog
+
+    def draw(self, decks, s):
+        GL, u = self.GL, self.u
+        for unit, k in enumerate("AB"):
+            d, t = decks[k], self.tex[k]
+            has = d.frame is not None
+            if has:
+                GL.glActiveTexture(GL.GL_TEXTURE0 + unit)
+                GL.glBindTexture(GL.GL_TEXTURE_2D, t["id"])
+                if t["size"] != (d.w, d.h):
+                    GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RGB, d.w, d.h, 0, GL.GL_RGB, GL.GL_UNSIGNED_BYTE, d.frame)
+                    t["size"], t["serial"] = (d.w, d.h), d.frame_serial
+                elif t["serial"] != d.frame_serial:
+                    GL.glTexSubImage2D(GL.GL_TEXTURE_2D, 0, 0, 0, d.w, d.h, GL.GL_RGB, GL.GL_UNSIGNED_BYTE, d.frame)
+                    t["serial"] = d.frame_serial
+                fx = s["decks"][k]["fx"]
+                GL.glUniform2f(u["fit" + k], *fit_scale(d.aspect, s["screen_aspect"], fx["fit"]))
+                GL.glUniform3f(u["clip" + k], fx["zoom"], -fx["panx"] * 0.5, -fx["pany"] * 0.5)
+            GL.glUniform1f(u["has" + k], 1.0 if has else 0.0)
+        GL.glUniform1f(u["zoom"], s["zoom"])
+        GL.glUniform2f(u["offset"], *s["offset"])
+        GL.glUniform1f(u["droste"], 1.0 if s["droste"] else 0.0)
+        GL.glUniform1f(u["xfade"], s["xfade"])
+        GL.glUniform1f(u["master"], s["master"])
+        GL.glUniform3f(u["tint"], *s["tint"])
+        GL.glUniform1f(u["tintAmount"], s["tint_amount"])
+        GL.glUniform1f(u["strobe"], s["strobe"])
+        GL.glUniform3f(u["strobeColor"], *s["strobe_color"])
+        GL.glViewport(0, 0, *self.size)
+        GL.glDrawArrays(GL.GL_TRIANGLE_STRIP, 0, 4)
         pygame.display.flip()
 
 
@@ -228,20 +332,34 @@ class SDLRenderer:
         surf.blit(self.gray, (0, 0), special_flags=pygame.BLEND_RGB_MULT)
 
 
+def _is_pi3():
+    try:
+        with open("/proc/device-tree/model") as f:
+            return "Raspberry Pi 3" in f.read()
+    except OSError:
+        return False
+
+
 def create(cfg):
     pygame.display.init()
     want = cfg.renderer
-    if want in ("auto", "gl"):
+    order = {"gl": ["gl"], "gl2": ["gl2"], "sdl": []}.get(want)
+    if order is None:  # auto
+        order = ["gl2"] if _is_pi3() else ["gl", "gl2"]
+    for name in order:
         try:
-            os.environ.setdefault("MESA_GL_VERSION_OVERRIDE", "3.3")
-            os.environ.setdefault("MESA_GLSL_VERSION_OVERRIDE", "330")
-            r = GLRenderer(cfg)
-            log.info("render OpenGL activo")
+            if name == "gl":
+                os.environ.setdefault("MESA_GL_VERSION_OVERRIDE", "3.3")
+                os.environ.setdefault("MESA_GLSL_VERSION_OVERRIDE", "330")
+                r = GLRenderer(cfg)
+            else:
+                r = GL2Renderer(cfg)
+            log.info("render %s activo", r.name)
             return r
         except Exception as e:
-            if want == "gl":
+            if want == name:
                 raise
-            log.warning("OpenGL no disponible (%s), uso render SDL", e)
+            log.warning("render %s no disponible (%s)", name, e)
             pygame.display.quit()
             pygame.display.init()
     r = SDLRenderer(cfg)

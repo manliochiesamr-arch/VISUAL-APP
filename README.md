@@ -47,6 +47,8 @@ Si Safari igual bloquea el micrófono, usa TAP, que funciona siempre.
 
 ## Instalación en la Raspberry Pi
 
+**Si nunca usaste una Raspberry, sigue la guía paso a paso [INSTALAR-PI.md](INSTALAR-PI.md)**, desde flashear la SD hasta conectarte con el iPhone. Funciona en Pi 3 (modo liviano: clips de 360p y OpenGL 2.1) y en Pi 4.
+
 Se necesita **Raspberry Pi OS Bookworm 64-bit**. Se recomienda la versión **Lite** (sin escritorio). Para la instalación hace falta internet, por cable o por wifi.
 
 ```bash
@@ -92,7 +94,7 @@ python -m visuales --window          # abrir http://localhost:8080 en el navegad
 ## Estructura
 - `visuales/state.py`: estado del mezclador y reloj de beat.
 - `visuales/deck.py`: decodifica cada clip en loop con ffmpeg, con control de velocidad.
-- `visuales/render.py`: salida de video (OpenGL o SDL).
+- `visuales/render.py`: salida de video (OpenGL 3, OpenGL 2.1 para la Pi 3, o SDL).
 - `visuales/library.py`: biblioteca, validación y conversión a SD.
 - `visuales/shows.py`: shows por banda.
 - `visuales/server.py`: web, subida de videos y websocket de control.

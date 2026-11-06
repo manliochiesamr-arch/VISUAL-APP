@@ -19,8 +19,12 @@ class Config:
     width: int = field(default_factory=lambda: _env("WIDTH", 720, int))
     height: int = field(default_factory=lambda: _env("HEIGHT", 576, int))
     # Tamano maximo de los clips convertidos (se conserva la proporcion: 16:9 -> 1024x576, 4:3 -> 768x576)
-    clip_max_w: int = 1024
-    clip_max_h: int = 576
+    # En la Pi 3 se usa 360 de alto (VISUALES_CLIP_H=360) para poder decodificar dos clips a la vez
+    clip_max_h: int = field(default_factory=lambda: _env("CLIP_H", 576, int))
+
+    @property
+    def clip_max_w(self):
+        return int(self.clip_max_h * 16 / 9) // 2 * 2
     fps: int = field(default_factory=lambda: _env("FPS", 25, int))
     data_dir: Path = field(default_factory=lambda: Path(_env("DATA", str(Path.home() / "visuales-data"))))
     http_port: int = field(default_factory=lambda: _env("HTTP_PORT", 8080, int))

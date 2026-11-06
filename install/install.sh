@@ -10,13 +10,21 @@ DEST=/opt/visuales
 
 echo "==> Paquetes del sistema"
 apt-get update
-apt-get install -y ffmpeg python3-venv python3-pip python3-pygame python3-aiohttp python3-numpy openssl
+apt-get install -y ffmpeg python3-venv python3-pip python3-pygame python3-aiohttp python3-numpy openssl python3-opengl
 
 echo "==> Copiando app a $DEST"
 mkdir -p "$DEST"
 rsync -a --delete --exclude .git --exclude __pycache__ "$SRC/" "$DEST/" 2>/dev/null || cp -r "$SRC/." "$DEST/"
 python3 -m venv --system-site-packages "$DEST/venv"
-"$DEST/venv/bin/pip" install --upgrade "moderngl>=5.8" || echo "AVISO: moderngl no se instalo; se usara el render SDL (funciona igual)"
+MODEL=$(tr -d '\0' < /proc/device-tree/model 2>/dev/null || echo "?")
+echo "Placa: $MODEL"
+EXTRA_ENV=""
+if echo "$MODEL" | grep -q "Raspberry Pi 3"; then
+  # Pi 3: GPU VideoCore IV (OpenGL 2.1) y CPU justa -> render gl2 y clips de 360p
+  EXTRA_ENV="Environment=VISUALES_CLIP_H=360"
+else
+  "$DEST/venv/bin/pip" install --upgrade "moderngl>=5.8" || echo "AVISO: moderngl no se instalo; se usara otro render (funciona igual)"
+fi
 
 echo "==> Certificado HTTPS local (para el microfono del iPhone)"
 mkdir -p "$DEST/cert"
@@ -43,6 +51,7 @@ Environment=VISUALES_HTTPS_PORT=443
 Environment=VISUALES_CERT=$DEST/cert/cert.pem
 Environment=VISUALES_KEY=$DEST/cert/key.pem
 Environment=SDL_VIDEODRIVER=kmsdrm
+$EXTRA_ENV
 Environment=PYTHONUNBUFFERED=1
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 ExecStart=$DEST/venv/bin/python -m visuales

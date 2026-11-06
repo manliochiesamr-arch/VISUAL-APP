@@ -29,7 +29,7 @@ def control_urls(port):
 def main():
     ap = argparse.ArgumentParser(description="Visuales en vivo para Raspberry Pi")
     ap.add_argument("--window", action="store_true", help="ventana en vez de pantalla completa (pruebas)")
-    ap.add_argument("--renderer", choices=["auto", "gl", "sdl"])
+    ap.add_argument("--renderer", choices=["auto", "gl", "gl2", "sdl"])
     ap.add_argument("--data", help="carpeta de datos")
     ap.add_argument("--demo", action="store_true", help="generar clips de prueba si no hay videos")
     ap.add_argument("--max-seconds", type=float, default=0, help="salir despues de N segundos (pruebas)")
