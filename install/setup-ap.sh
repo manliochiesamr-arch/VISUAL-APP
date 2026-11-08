@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Crea un wifi propio en la Pi (NetworkManager, Bookworm). La Pi queda en 10.42.0.1.
-# Uso: sudo ./setup-ap.sh NOMBRE_RED CLAVE [PAIS]
+# Uso: sudo ./setup-ap.sh NOMBRE_RED CLAVE [PAIS] [oculta]
+#   CLAVE "-" = red abierta.  "oculta" = la red no se anuncia (en el iPhone: Wi-Fi > Otra...)
 set -euo pipefail
 SSID="${1:?Falta el nombre de la red}"
 PASS="${2:?Falta la clave (minimo 8 caracteres)}"
 COUNTRY="${3:-AR}"
+HIDDEN=no; [ "${4:-}" = oculta ] && HIDDEN=yes
 # correr como servicio aparte: asi no muere cuando se corta el SSH / Remote shell
 if [ -z "${INVOCATION_ID:-}" ]; then
   [ "$(id -u)" = 0 ] || { echo "Ejecutar con sudo"; exit 1; }
@@ -32,7 +34,7 @@ PREV=$(nmcli -t -f NAME,TYPE con show --active | awk -F: '$2=="802-11-wireless" 
 nmcli con delete visuales-ap 2>/dev/null || true
 nmcli con add type wifi ifname wlan0 con-name visuales-ap autoconnect no ssid "$SSID" \
   802-11-wireless.mode ap 802-11-wireless.band bg 802-11-wireless.channel 6 \
-  ipv4.method shared ipv4.addresses 10.42.0.1/24
+  ipv4.method shared ipv4.addresses 10.42.0.1/24 802-11-wireless.hidden $HIDDEN
 if [ "$PASS" != "-" ]; then
   nmcli con modify visuales-ap wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PASS" \
     wifi-sec.proto rsn wifi-sec.pairwise ccmp wifi-sec.group ccmp wifi-sec.pmf disable
