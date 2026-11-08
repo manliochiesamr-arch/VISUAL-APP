@@ -17,7 +17,7 @@ raspi-config nonint do_wifi_country "$COUNTRY" 2>/dev/null || true
 # wifi al que esta conectada ahora (para volver si la red propia falla)
 PREV=$(nmcli -t -f NAME,TYPE con show --active | awk -F: '$2=="802-11-wireless" && $1!="visuales-ap"{print $1; exit}')
 nmcli con delete visuales-ap 2>/dev/null || true
-nmcli con add type wifi ifname wlan0 con-name visuales-ap autoconnect yes ssid "$SSID" \
+nmcli con add type wifi ifname wlan0 con-name visuales-ap autoconnect no ssid "$SSID" \
   802-11-wireless.mode ap 802-11-wireless.band bg 802-11-wireless.channel 6 \
   ipv4.method shared ipv4.addresses 10.42.0.1/24 \
   wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PASS"
@@ -38,7 +38,8 @@ if [ "${KEEP:-0}" != 1 ] && [ -n "$PREV" ]; then
   for i in $(seq 60); do
     sleep 5
     if iw dev wlan0 station dump 2>/dev/null | grep -q Station || ip neigh show dev wlan0 to 10.42.0.0/24 | grep -qE "REACHABLE|STALE|DELAY"; then
-      echo "Equipo conectado: la red queda fija."; exit 0
+      nmcli con modify visuales-ap connection.autoconnect yes
+      echo "Equipo conectado: la red queda fija (tambien al reiniciar)."; exit 0
     fi
   done
   echo "Nadie se conecto en 5 minutos: vuelvo al wifi '$PREV'."
@@ -46,4 +47,5 @@ if [ "${KEEP:-0}" != 1 ] && [ -n "$PREV" ]; then
   nmcli con up "$PREV" || true
   exit 1
 fi
+nmcli con modify visuales-ap connection.autoconnect yes
 echo "OJO: si estabas conectado a la Pi por wifi (SSH), se corto. Usar cable o teclado."
