@@ -52,7 +52,7 @@ if [ "${KEEP:-0}" != 1 ] && [ -n "$PREV" ]; then
   for i in $(seq 60); do
     sleep 5
     [ $((i % 6)) = 1 ] && { echo "--- $(date +%T)"; iw dev wlan0 info | grep -E "ssid|type|channel"; } || true
-    if iw dev wlan0 station dump 2>/dev/null | grep -q Station || ip neigh show dev wlan0 to 10.42.0.0/24 | grep -qE "REACHABLE|STALE|DELAY"; then
+    if iw dev wlan0 station dump 2>/dev/null | grep -qE "authorized:\s+yes" && ip neigh show dev wlan0 to 10.42.0.0/24 | grep -qE "REACHABLE|STALE|DELAY"; then
       nmcli con modify visuales-ap connection.autoconnect yes
       echo "Equipo conectado: la red queda fija (tambien al reiniciar)."; exit 0
     fi
