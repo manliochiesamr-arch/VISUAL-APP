@@ -9,7 +9,7 @@ function connect() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${proto}://${location.host}/ws`);
   ws.onopen = () => $('#conn').classList.remove('off');
-  ws.onclose = () => { $('#conn').classList.add('off'); setTimeout(connect, 1000); };
+  ws.onclose = () => { $('#conn').classList.add('off'); setTimeout(start, 1000); };
   ws.onmessage = (e) => {
     const m = JSON.parse(e.data);
     if (m.type === 'state') { onState(m); }
@@ -420,4 +420,17 @@ async function keepAwake() { try { await navigator.wakeLock.request('screen'); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') keepAwake(); });
 keepAwake();
 
-connect();
+// PIN: si la Pi tiene PIN, se pide una vez y queda guardado en una cookie
+async function start() {
+  let bad = false;
+  for (;;) {
+    let a;
+    try { a = await (await fetch('/api/auth')).json(); } catch { await new Promise((r) => setTimeout(r, 2000)); continue; }
+    if (a.ok) return connect();
+    const pin = await askText(bad ? 'PIN incorrecto, proba de nuevo' : 'PIN de Visuales', '');
+    if (!pin) continue;
+    const r = await (await fetch('/api/pin', { method: 'POST', body: JSON.stringify({ pin }) })).json();
+    bad = !r.ok;
+  }
+}
+start();

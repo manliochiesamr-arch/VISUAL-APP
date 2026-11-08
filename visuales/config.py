@@ -36,6 +36,8 @@ class Config:
     # Solo se aceptan MP4 con video H.264 (evita HEVC/archivos pesados en la Pi)
     allowed_codecs: tuple = ("h264",)
     max_upload_mb: int = field(default_factory=lambda: _env("MAX_UPLOAD_MB", 2048, int))
+    # PIN para controlar desde la web (vacio = sin PIN). En la Pi: sudo /opt/visuales/install/set-pin.sh 1234
+    pin: str = field(default_factory=lambda: _env("PIN", "", str))
 
     @property
     def clips_dir(self):

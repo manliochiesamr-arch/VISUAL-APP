@@ -38,6 +38,29 @@ class Server:
                               "free_gb": disk_free_gb(self.cfg.data_dir)})
 
     # ---------- handlers ----------
+    # ---------- PIN ----------
+    def _authed(self, request):
+        return not self.cfg.pin or request.cookies.get("vpin") == self.cfg.pin
+
+    @web.middleware
+    async def guard(self, request, handler):
+        p = request.path
+        if (p == "/ws" or p.startswith("/api/")) and p not in ("/api/auth", "/api/pin") and not self._authed(request):
+            raise web.HTTPUnauthorized(text="PIN")
+        return await handler(request)
+
+    async def auth(self, request):
+        return web.json_response({"ok": self._authed(request), "pin": bool(self.cfg.pin)})
+
+    async def set_pin(self, request):
+        data = await request.json()
+        if not self.cfg.pin or str(data.get("pin", "")) == self.cfg.pin:
+            r = web.json_response({"ok": True})
+            r.set_cookie("vpin", self.cfg.pin, max_age=10 * 365 * 86400, samesite="Strict")
+            return r
+        await asyncio.sleep(1)  # frena intentos a ciegas
+        return web.json_response({"ok": False})
+
     async def index(self, request):
         return web.FileResponse(WEB / "index.html", headers={"Cache-Control": "no-cache"})
 
@@ -166,8 +189,11 @@ class Server:
 
     # ---------- arranque ----------
     def make_app(self):
-        app = web.Application(client_max_size=self.cfg.max_upload_mb * 1024 * 1024 + 10_000_000)
+        app = web.Application(client_max_size=self.cfg.max_upload_mb * 1024 * 1024 + 10_000_000,
+                              middlewares=[self.guard])
         app.router.add_get("/", self.index)
+        app.router.add_get("/api/auth", self.auth)
+        app.router.add_post("/api/pin", self.set_pin)
         app.router.add_get("/ws", self.ws)
         app.router.add_post("/api/upload", self.upload)
         app.router.add_get("/api/library", self.library_json)
