@@ -51,12 +51,14 @@ echo "Wifi '$SSID' activo. Desde el iPhone: conectarse y abrir http://10.42.0.1"
 # red de prueba: si en 5 minutos no se conecta ningun equipo, se vuelve al wifi anterior
 # (para no dejar la Pi incomunicada si la red no se ve). Saltear con KEEP=1.
 if [ "${KEEP:-0}" != 1 ] && [ -n "$PREV" ]; then
+  T0=$(date +%s)
   echo "Esperando un equipo conectado (hasta 5 minutos)..."
   for i in $(seq 60); do
     sleep 5
     iw dev wlan0 station dump 2>/dev/null | grep -E "^Station|authorized" || true
     [ $((i % 6)) = 1 ] && { echo "--- $(date +%T)"; iw dev wlan0 info | grep -E "ssid|type|channel"; } || true
-    if iw dev wlan0 station dump 2>/dev/null | grep -qE "authorized:\s+yes" && ip neigh show dev wlan0 to 10.42.0.0/24 | grep -qE "REACHABLE|STALE|DELAY"; then
+    # un equipo cuenta solo si paso la clave y recibio IP (DHCPACK del dnsmasq de NetworkManager)
+    if journalctl -u NetworkManager --since "@$T0" --no-pager 2>/dev/null | grep -q "DHCPACK(wlan0)"; then
       nmcli con modify visuales-ap connection.autoconnect yes
       echo "Equipo conectado: la red queda fija (tambien al reiniciar)."; exit 0
     fi
