@@ -37,7 +37,7 @@ if [ "${KEEP:-0}" != 1 ] && [ -n "$PREV" ]; then
   echo "Esperando un equipo conectado (hasta 5 minutos)..."
   for i in $(seq 60); do
     sleep 5
-    if iw dev wlan0 station dump 2>/dev/null | grep -q Station || ip neigh show dev wlan0 | grep -qE "REACHABLE|STALE|DELAY"; then
+    if iw dev wlan0 station dump 2>/dev/null | grep -q Station || ip neigh show dev wlan0 to 10.42.0.0/24 | grep -qE "REACHABLE|STALE|DELAY"; then
       echo "Equipo conectado: la red queda fija."; exit 0
     fi
   done
