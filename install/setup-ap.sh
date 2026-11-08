@@ -51,14 +51,14 @@ if [ "${KEEP:-0}" != 1 ] && [ -n "$PREV" ]; then
   echo "Esperando un equipo conectado (hasta 5 minutos)..."
   for i in $(seq 60); do
     sleep 5
-    [ $((i % 6)) = 1 ] && { echo "--- $(date +%T)"; iw dev wlan0 info | grep -E "ssid|type|channel"; }
+    [ $((i % 6)) = 1 ] && { echo "--- $(date +%T)"; iw dev wlan0 info | grep -E "ssid|type|channel"; } || true
     if iw dev wlan0 station dump 2>/dev/null | grep -q Station || ip neigh show dev wlan0 to 10.42.0.0/24 | grep -qE "REACHABLE|STALE|DELAY"; then
       nmcli con modify visuales-ap connection.autoconnect yes
       echo "Equipo conectado: la red queda fija (tambien al reiniciar)."; exit 0
     fi
   done
   echo "Nadie se conecto en 5 minutos: vuelvo al wifi '$PREV'."
-  nmcli dev status; journalctl -u NetworkManager -n 60 --no-pager; dmesg | grep -i brcm | tail -n 20
+  nmcli dev status; journalctl -u NetworkManager -n 60 --no-pager; dmesg | grep -i brcm | tail -n 20 || true
   nmcli con delete visuales-ap 2>/dev/null || true
   nmcli con up "$PREV" || true
   exit 1
