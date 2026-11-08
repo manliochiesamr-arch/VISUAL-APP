@@ -14,6 +14,8 @@ if ! command -v dnsmasq >/dev/null; then
 fi
 rfkill unblock wifi 2>/dev/null || true
 raspi-config nonint do_wifi_country "$COUNTRY" 2>/dev/null || true
+# wifi al que esta conectada ahora (para volver si la red propia falla)
+PREV=$(nmcli -t -f NAME,TYPE con show --active | awk -F: '$2=="802-11-wireless" && $1!="visuales-ap"{print $1; exit}')
 nmcli con delete visuales-ap 2>/dev/null || true
 nmcli con add type wifi ifname wlan0 con-name visuales-ap autoconnect yes ssid "$SSID" \
   802-11-wireless.mode ap 802-11-wireless.band bg 802-11-wireless.channel 6 \
@@ -23,6 +25,9 @@ nmcli con modify visuales-ap connection.autoconnect-priority 100
 if ! nmcli con up visuales-ap; then
   echo "ERROR: no se pudo levantar la red propia. Mandale este mensaje a Claude."
   nmcli dev status
+  # no dejar la Pi incomunicada: borrar la red propia y volver al wifi anterior
+  nmcli con delete visuales-ap 2>/dev/null || true
+  [ -n "$PREV" ] && nmcli con up "$PREV" || true
   exit 1
 fi
 echo "Wifi '$SSID' activo. Desde el iPhone: conectarse y abrir http://10.42.0.1"
