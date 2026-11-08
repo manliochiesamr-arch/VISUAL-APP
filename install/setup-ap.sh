@@ -31,4 +31,19 @@ if ! nmcli con up visuales-ap; then
   exit 1
 fi
 echo "Wifi '$SSID' activo. Desde el iPhone: conectarse y abrir http://10.42.0.1"
+# red de prueba: si en 5 minutos no se conecta ningun equipo, se vuelve al wifi anterior
+# (para no dejar la Pi incomunicada si la red no se ve). Saltear con KEEP=1.
+if [ "${KEEP:-0}" != 1 ] && [ -n "$PREV" ]; then
+  echo "Esperando un equipo conectado (hasta 5 minutos)..."
+  for i in $(seq 60); do
+    sleep 5
+    if iw dev wlan0 station dump 2>/dev/null | grep -q Station; then
+      echo "Equipo conectado: la red queda fija."; exit 0
+    fi
+  done
+  echo "Nadie se conecto en 5 minutos: vuelvo al wifi '$PREV'."
+  nmcli con delete visuales-ap 2>/dev/null || true
+  nmcli con up "$PREV" || true
+  exit 1
+fi
 echo "OJO: si estabas conectado a la Pi por wifi (SSH), se corto. Usar cable o teclado."
