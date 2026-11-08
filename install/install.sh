@@ -3,7 +3,11 @@
 # Uso:  sudo ./install/install.sh            (desde la carpeta del proyecto)
 set -euo pipefail
 [ "$(id -u)" = 0 ] || { echo "Ejecutar con sudo"; exit 1; }
-RUN_USER="${SUDO_USER:-pi}"
+RUN_USER="${SUDO_USER:-}"
+if [ -z "$RUN_USER" ] || [ "$RUN_USER" = root ]; then
+  echo "Ejecutalo con sudo desde tu usuario normal (ej: sudo ./install/install.sh), no como root."
+  exit 1
+fi
 RUN_HOME=$(getent passwd "$RUN_USER" | cut -d: -f6)
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
 DEST=/opt/visuales
