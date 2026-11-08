@@ -14,7 +14,7 @@ DEST=/opt/visuales
 
 echo "==> Paquetes del sistema"
 apt-get update
-apt-get install -y ffmpeg python3-venv python3-pip python3-pygame python3-aiohttp python3-numpy openssl python3-opengl
+apt-get install -y ffmpeg python3-venv python3-pip python3-pygame python3-aiohttp python3-numpy openssl python3-opengl dnsmasq-base
 
 echo "==> Copiando app a $DEST"
 mkdir -p "$DEST"
