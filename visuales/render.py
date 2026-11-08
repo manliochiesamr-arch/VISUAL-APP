@@ -5,6 +5,7 @@
 """
 import logging
 import os
+import time
 
 import pygame
 
@@ -340,8 +341,23 @@ def _is_pi3():
         return False
 
 
+class NullRenderer:
+    """Sin salida de video (no hay pantalla disponible). La web sigue andando y se reintenta."""
+    name = "sin-video"
+
+    def draw(self, decks, s):
+        time.sleep(0.04)
+
+
 def create(cfg):
-    pygame.display.init()
+    """Devuelve un renderer. Si no hay pantalla (kmsdrm no disponible, HDMI sin detectar,
+    otro programa usando la pantalla), devuelve NullRenderer en vez de romper."""
+    try:
+        pygame.display.init()
+    except pygame.error as e:
+        log.error("sin pantalla (%s). Revisar: HDMI conectado antes de encender, "
+                  "escritorio desactivado (multi-user.target), /dev/dri. La web sigue activa.", e)
+        return NullRenderer()
     want = cfg.renderer
     order = {"gl": ["gl"], "gl2": ["gl2"], "sdl": []}.get(want)
     if order is None:  # auto

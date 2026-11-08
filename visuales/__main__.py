@@ -76,9 +76,10 @@ def main():
     clock = pygame.time.Clock()
     t_start = last = time.monotonic()
     frames, t_stat = 0, t_start
+    t_retry = t_start
     running = True
     while running:
-        for ev in pygame.event.get():
+        for ev in (pygame.event.get() if pygame.display.get_init() else ()):
             if ev.type == pygame.QUIT or (ev.type == pygame.KEYDOWN and ev.key in (pygame.K_ESCAPE, pygame.K_q)):
                 running = False
         now = time.monotonic()
@@ -92,6 +93,11 @@ def main():
             weight = s["xfade"] if k == "B" else 1.0 - s["xfade"]
             d.update(dt, s["decks"][k]["fx"]["speed"] if weight > 0.001 else 0.0)
         renderer.draw(decks, s)
+        if renderer.name == "sin-video" and now - t_retry > 15:
+            # reintentar la pantalla cada 15 s (por si se conecto el HDMI o se libero la pantalla)
+            t_retry = now
+            pygame.display.quit()
+            renderer = render.create(cfg)
         clock.tick(60)
         frames += 1
         if now - t_stat >= 10:
