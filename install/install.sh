@@ -23,7 +23,7 @@ fi
 
 echo "==> Copiando app a $DEST"
 mkdir -p "$DEST"
-rsync -a --delete --exclude .git --exclude __pycache__ "$SRC/" "$DEST/" 2>/dev/null || cp -r "$SRC/." "$DEST/"
+rsync -a --delete --exclude .git --exclude __pycache__ --exclude /venv --exclude /cert "$SRC/" "$DEST/" 2>/dev/null || cp -r "$SRC/." "$DEST/"
 python3 -m venv --system-site-packages "$DEST/venv"
 MODEL=$(tr -d '\0' < /proc/device-tree/model 2>/dev/null || echo "?")
 echo "Placa: $MODEL"
@@ -37,7 +37,8 @@ fi
 
 echo "==> Certificado HTTPS local (para el microfono del iPhone)"
 mkdir -p "$DEST/cert"
-if [ ! -f "$DEST/cert/cert.pem" ]; then
+# regenerar si falta o si cert y clave no son un par valido
+if ! openssl x509 -in "$DEST/cert/cert.pem" -noout 2>/dev/null || ! openssl pkey -in "$DEST/cert/key.pem" -noout 2>/dev/null; then
   openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
     -keyout "$DEST/cert/key.pem" -out "$DEST/cert/cert.pem" \
     -subj "/CN=visuales" -addext "subjectAltName=IP:10.42.0.1,DNS:visuales.local"

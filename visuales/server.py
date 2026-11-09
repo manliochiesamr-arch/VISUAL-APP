@@ -223,11 +223,19 @@ class Server:
             self.loop.run_until_complete(runner.setup())
             sites = [web.TCPSite(runner, "0.0.0.0", self.cfg.http_port)]
             if self.cfg.cert_file and Path(self.cfg.cert_file).exists():
-                sslctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-                sslctx.load_cert_chain(self.cfg.cert_file, self.cfg.key_file)
-                sites.append(web.TCPSite(runner, "0.0.0.0", self.cfg.https_port, ssl_context=sslctx))
-            for s in sites:
-                self.loop.run_until_complete(s.start())
+                try:
+                    sslctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+                    sslctx.load_cert_chain(self.cfg.cert_file, self.cfg.key_file)
+                    sites.append(web.TCPSite(runner, "0.0.0.0", self.cfg.https_port, ssl_context=sslctx))
+                except (OSError, ssl.SSLError) as e:
+                    # sin https solo se pierde el microfono; la web normal tiene que andar igual
+                    log.error("certificado https invalido (%s): sigo solo con http", e)
+            for s in list(sites):
+                try:
+                    self.loop.run_until_complete(s.start())
+                except OSError as e:
+                    log.error("no pude abrir %s: %s", s.name, e)
+                    sites.remove(s)
             log.info("web en http://0.0.0.0:%d%s", self.cfg.http_port,
                      f" y https :{self.cfg.https_port}" if len(sites) > 1 else "")
             self.loop.create_task(self.ticker())

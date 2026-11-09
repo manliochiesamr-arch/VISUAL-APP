@@ -179,6 +179,9 @@ class GL2Renderer:
 
     def __init__(self, cfg):
         import ctypes
+        # en la Pi (kmsdrm) el contexto es EGL; PyOpenGL por defecto busca GLX y no lo encuentra
+        if os.environ.get("SDL_VIDEODRIVER") == "kmsdrm":
+            os.environ.setdefault("PYOPENGL_PLATFORM", "egl")
         import OpenGL
         OpenGL.ERROR_CHECKING = False
         from OpenGL import GL
