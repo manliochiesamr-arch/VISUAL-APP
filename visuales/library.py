@@ -50,9 +50,11 @@ class Library:
                 self.clips[cid] = {"id": cid, "name": name, "kind": "gen", "gen": key, "status": "ready",
                                    "error": None, "duration": None, "added": 1000 - i,
                                    "width": g.W, "height": g.H, "file": "", "source": ""}
-            thumb = self.cfg.thumbs_dir / f"{cid}.jpg"
-            if not thumb.exists():
-                threading.Thread(target=self._gen_thumb, args=(key, thumb), daemon=True).start()
+
+        # miniaturas: se rehacen en cada arranque (por si cambio el dibujo), de a una
+        keys = list(g.GENERATORS)
+        threading.Thread(target=lambda: [self._gen_thumb(k, self.cfg.thumbs_dir / f"gen-{k}.jpg") for k in keys],
+                         daemon=True).start()
 
     @staticmethod
     def _gen_thumb(key, thumb):
