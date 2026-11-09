@@ -387,7 +387,12 @@ function sendSpectrum() {
     for (let j = a; j < b && j < buf.length; j++) m = Math.max(m, buf[j]);
     out.push(m);
   }
-  send('audio', { b: out });
+  // ganancia automatica: el pico reciente pasa a ser el maximo, asi reacciona igual
+  // con musica fuerte o bajita. Debajo del piso de ruido no se amplifica.
+  const peak = Math.max(...out);
+  mic.peak = Math.max(peak, (mic.peak || 0) * 0.995, 60);
+  const floor = 25;
+  send('audio', { b: out.map((v) => Math.round(Math.max(0, v - floor) / (mic.peak - floor) * 255)) });
 }
 const mic = { on: false, ctx: null, stream: null, onsets: [], avg: 0, last: 0, history: [], sent: 0 };
 $('#mic').onclick = async () => {
@@ -406,6 +411,7 @@ $('#mic').onclick = async () => {
   src.connect(lp); lp.connect(an);
   // espectro completo para los visuales que reaccionan al sonido (Linea de audio)
   const sp = mic.ctx.createAnalyser(); sp.fftSize = 1024; sp.smoothingTimeConstant = 0.4;
+  sp.minDecibels = -95; sp.maxDecibels = -25;
   src.connect(sp); mic.sp = sp; mic.spBuf = new Uint8Array(sp.frequencyBinCount);
   mic.an = an; mic.buf = new Float32Array(an.fftSize); mic.on = true; mic.onsets = []; mic.history = [];
   $('#mic').classList.add('on'); $('#mic-hint').textContent = 'Escuchando… acercá el teléfono al bombo.';

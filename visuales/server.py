@@ -69,7 +69,12 @@ class Server:
         return web.json_response({"ok": False})
 
     async def index(self, request):
-        return web.FileResponse(WEB / "index.html", headers={"Cache-Control": "no-cache"})
+        # ?v=<fecha del archivo> en app.js y style.css: el telefono nunca se queda con una version vieja
+        html = (WEB / "index.html").read_text(encoding="utf-8")
+        for f in ("app.js", "style.css"):
+            v = int((WEB / f).stat().st_mtime)
+            html = html.replace(f"/static/{f}", f"/static/{f}?v={v}")
+        return web.Response(text=html, content_type="text/html", headers={"Cache-Control": "no-cache"})
 
     async def ws(self, request):
         ws = web.WebSocketResponse(heartbeat=10)
