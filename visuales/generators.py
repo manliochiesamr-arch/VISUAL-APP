@@ -255,6 +255,91 @@ _SMOOTH = np.exp(-np.linspace(-2, 2, 15) ** 2).astype(np.float32)
 _SMOOTH /= _SMOOTH.sum()
 
 
+# ---------- terminal: codigo que se tipea solo ----------
+_TERM_WORDS = ["INIT", "LOAD", "TAPE", "VIDEO", "SYNC", "FRAME", "BUFFER", "SIGNAL", "TRACK", "HEAD",
+               "CHROMA", "LUMA", "RGB", "SCAN", "DECODE", "MEM", "PTR", "LOOP", "BEAT", "PAL", "NTSC"]
+_TERM_LINES = []
+
+
+def _term_line(i):
+    r = np.random.default_rng(i * 2654435761 % (2 ** 32))
+    k = r.integers(0, 9)
+    w = lambda: _TERM_WORDS[r.integers(0, len(_TERM_WORDS))]
+    hx = lambda n: "".join("0123456789ABCDEF"[r.integers(0, 16)] for _ in range(n))
+    if k == 0:
+        return f"> {w()} {w()}.SYS"
+    if k == 1:
+        return f"{hx(4)}: {hx(2)} {hx(2)} {hx(2)} {hx(2)} {hx(2)} {hx(2)}"
+    if k == 2:
+        return f"  {w().lower()}({hx(2)}, {r.integers(0, 999)});"
+    if k == 3:
+        n = r.integers(1, 20)
+        return f"{w()} [" + "#" * n + "." * (20 - n) + f"] {n * 5}%"
+    if k == 4:
+        return f"IF {w()} > {r.integers(0, 255)} GOTO {r.integers(10, 990)}"
+    if k == 5:
+        return f"  {w()}_{w()} = 0x{hx(4)}"
+    if k == 6:
+        return f"ERR {hx(3)}: {w()} LOST" if r.random() < 0.4 else f"OK  {w()} {r.integers(0, 99):02d}:{r.integers(0, 59):02d}"
+    if k == 7:
+        return ""
+    return f"FOR I = 0 TO {r.integers(8, 512)}: {w()}(I)"
+
+
+def _term_lines():
+    if not _TERM_LINES:
+        _TERM_LINES.extend(_term_line(i) + "\n" for i in range(400))
+        _TERM_LINES.append(np.cumsum([len(l) for l in _TERM_LINES]))
+    return _TERM_LINES[:-1], _TERM_LINES[-1]
+
+
+_glyph_cache = {}
+
+
+def _text_row(text):
+    """Una linea de texto en pixeles (7 x W), con cache."""
+    img = _glyph_cache.get(text)
+    if img is None:
+        from .osd import FONT, normalize
+        img = np.zeros((7, W), np.float32)
+        for i, ch in enumerate(normalize(text)[: (W - 3) // 6]):
+            g = FONT.get(ch)
+            if g is not None:
+                img[:, 3 + i * 6:3 + i * 6 + 5] = g
+        if len(_glyph_cache) > 600:
+            _glyph_cache.clear()
+        _glyph_cache[text] = img
+    return img
+
+
+def terminal(t, beats, hue, detail):
+    """Codigo que se va tipeando y sube, con cursor que titila."""
+    lines, ends = _term_lines()
+    total = int(ends[-1])
+    typed = int(t * (12 + 60 * detail)) % total        # caracteres tipeados (Detalle = velocidad)
+    cur = int(np.searchsorted(ends, typed, side="right"))
+    start = typed - (int(ends[cur - 1]) if cur else 0)
+    rows = 12
+    img = np.zeros((H, W), np.float32)
+    first = max(0, cur - rows + 1)
+    for j, li in enumerate(range(first, cur + 1)):
+        text = lines[li].rstrip("\n")
+        if li == cur:
+            text = text[:start]
+        row = _text_row(text)
+        y = 2 + j * 9
+        img[y:y + 7] = row
+        if li == cur and (beats % 1.0) < 0.5:          # cursor
+            x = 3 + len(text) * 6
+            if x + 5 <= W:
+                img[y:y + 7, x:x + 5] = 1.0
+    img *= (0.8 + 0.2 * (_y % 2))                        # lineas de barrido
+    glow = (np.roll(img, 1, 1) + np.roll(img, -1, 1)) * 0.25
+    v = np.clip(img + glow, 0, 1)
+    col = np.array([0.25, 1.0, 0.35], np.float32) if hue < 0.001 else palette(np.zeros(1, np.float32), hue)[0]
+    return v[..., None] * col
+
+
 GENERATORS = {
     "plasma": ("Plasma", plasma),
     "tunel": ("Túnel", tunel),
@@ -269,6 +354,7 @@ GENERATORS = {
     "barrido_rgb": ("Barrido RGB", barrido_rgb),
     "ondas_vhs": ("Ondas VHS", ondas_vhs),
     "linea_audio": ("Línea de audio", linea_audio),
+    "terminal": ("Terminal", terminal),
 }
 
 
