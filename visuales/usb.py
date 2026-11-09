@@ -52,8 +52,22 @@ class UsbImporter:
                             found.append((p, key))
         return found
 
+    def _update_status(self):
+        """Muestra en el telefono lo que informa el actualizador por pendrive (servicio root)."""
+        f = Path("/var/lib/visuales/update-status")
+        try:
+            m = f.stat().st_mtime
+        except OSError:
+            return
+        if m != getattr(self, "_upd_mtime", None):
+            first = getattr(self, "_upd_mtime", None) is None
+            self._upd_mtime = m
+            if not first or time.time() - m < 600:
+                self._set_status(f.read_text(encoding="utf-8", errors="replace").strip())
+
     def _run(self):
         while True:
+            self._update_status()
             try:
                 todo = self._scan()
                 if todo:

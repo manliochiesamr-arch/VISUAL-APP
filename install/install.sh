@@ -13,8 +13,13 @@ SRC="$(cd "$(dirname "$0")/.." && pwd)"
 DEST=/opt/visuales
 
 echo "==> Paquetes del sistema"
-apt-get update
-apt-get install -y ffmpeg python3-venv python3-pip python3-pygame python3-aiohttp python3-numpy openssl python3-opengl dnsmasq-base
+PKGS="ffmpeg python3-venv python3-pip python3-pygame python3-aiohttp python3-numpy openssl python3-opengl dnsmasq-base"
+if dpkg -s $PKGS >/dev/null 2>&1; then
+  echo "ya instalados (no hace falta internet)"
+else
+  apt-get update
+  apt-get install -y $PKGS
+fi
 
 echo "==> Copiando app a $DEST"
 mkdir -p "$DEST"
@@ -74,9 +79,27 @@ ACTION=="remove", SUBSYSTEM=="block", ENV{ID_BUS}=="usb", RUN{program}+="/usr/bi
 RULE
 udevadm control --reload-rules || true
 
+echo "==> Actualizaciones por pendrive (ZIP de GitHub en la raiz del pendrive)"
+cat > /etc/systemd/system/visuales-updater.service <<UNIT
+[Unit]
+Description=Visuales: actualizar desde pendrive
+After=local-fs.target
+
+[Service]
+Environment=RUN_USER=$RUN_USER
+ExecStart=$DEST/install/usb-updater.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
 systemctl daemon-reload
-systemctl enable visuales.service
+systemctl enable visuales.service visuales-updater.service
 systemctl restart visuales.service || true
+# si esta instalacion la lanzo el propio updater, no reiniciarlo (se cortaria a si mismo)
+systemctl is-active -q visuales-updater.service || systemctl start visuales-updater.service || true
 echo
 echo "Listo. Siguientes pasos:"
 echo "  1) Red propia:      sudo $DEST/install/setup-ap.sh VISUALES clave-de-8-o-mas"
