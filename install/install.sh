@@ -66,8 +66,17 @@ RestartSec=2
 WantedBy=multi-user.target
 UNIT
 
+echo "==> Pendrives: se montan solos (solo lectura) en /media/visuales y la app importa los MP4"
+mkdir -p /media/visuales
+cat > /etc/udev/rules.d/90-visuales-usb.rules <<'RULE'
+ACTION=="add", SUBSYSTEM=="block", ENV{ID_BUS}=="usb", ENV{ID_FS_USAGE}=="filesystem", RUN{program}+="/usr/bin/systemd-mount --no-block --collect -o ro /dev/%k /media/visuales/%k"
+ACTION=="remove", SUBSYSTEM=="block", ENV{ID_BUS}=="usb", RUN{program}+="/usr/bin/systemd-mount --umount /media/visuales/%k"
+RULE
+udevadm control --reload-rules || true
+
 systemctl daemon-reload
 systemctl enable visuales.service
+systemctl restart visuales.service || true
 echo
 echo "Listo. Siguientes pasos:"
 echo "  1) Red propia:      sudo $DEST/install/setup-ap.sh VISUALES clave-de-8-o-mas"

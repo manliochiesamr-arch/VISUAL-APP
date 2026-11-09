@@ -33,6 +33,13 @@ class Server:
             except Exception:
                 self.clients.discard(ws)
 
+    def notify_usb(self, text):
+        if self.loop:
+            async def go():
+                await self.broadcast({"type": "usb", "text": text})
+                await self.broadcast(self.shows.payload())
+            self.loop.call_soon_threadsafe(lambda: asyncio.ensure_future(go()))
+
     async def broadcast_library(self):
         await self.broadcast({"type": "library", "clips": self.library.list(),
                               "free_gb": disk_free_gb(self.cfg.data_dir)})
@@ -72,6 +79,9 @@ class Server:
         await ws.send_str(json.dumps({"type": "library", "clips": self.library.list(),
                                       "free_gb": disk_free_gb(self.cfg.data_dir)}))
         await ws.send_str(json.dumps(self.shows.payload()))
+        usb = getattr(self, "usb", None)
+        if usb and usb.status:
+            await ws.send_str(json.dumps({"type": "usb", "text": usb.status}))
         try:
             async for msg in ws:
                 if msg.type != WSMsgType.TEXT:

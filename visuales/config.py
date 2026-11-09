@@ -37,6 +37,8 @@ class Config:
     allowed_codecs: tuple = ("h264",)
     max_upload_mb: int = field(default_factory=lambda: _env("MAX_UPLOAD_MB", 2048, int))
     # PIN para controlar desde la web (vacio = sin PIN). En la Pi: sudo /opt/visuales/install/set-pin.sh 1234
+    # carpeta donde se montan los pendrives (regla udev de install.sh)
+    usb_dir: str = field(default_factory=lambda: _env("USB_DIR", "/media/visuales", str))
     pin: str = field(default_factory=lambda: _env("PIN", "", str))
 
     @property

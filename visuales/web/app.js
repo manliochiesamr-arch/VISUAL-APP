@@ -14,6 +14,7 @@ function connect() {
     const m = JSON.parse(e.data);
     if (m.type === 'state') { onState(m); }
     else if (m.type === 'shows') { shows = m; renderShows(); renderLibrary(); }
+    else if (m.type === 'usb') { $('#usb').textContent = m.text; $('#usb').hidden = !m.text; }
     else if (m.type === 'library') { clips = m.clips; $('#free').textContent = `Espacio libre: ${m.free_gb} GB`; renderShows(); renderLibrary(); }
   };
 }

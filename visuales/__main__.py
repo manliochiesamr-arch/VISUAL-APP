@@ -60,6 +60,10 @@ def main():
     mixer.load_live(shows.active_live())
     server = Server(cfg, mixer, library, shows)
     server.start_in_thread()
+    from .usb import UsbImporter
+    usb = UsbImporter(cfg, library, shows, server.notify_usb)
+    server.usb = usb
+    usb.start()
     for url in control_urls(cfg.http_port):
         print(f"\n  >>> Control: {url}", flush=True)
     print("  (en la ventana de video: Esc para salir)\n", flush=True)
