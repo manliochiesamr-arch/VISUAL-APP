@@ -122,6 +122,22 @@
     <p class="hint">Destellos por beat. Mantener STROBE apretado = strobe momentáneo.</p>
 
 
+    <h3>Texto VHS</h3>
+    <div class="row"><input type="text" id="osd-text" maxlength="200" placeholder="Escribí el texto… (ej: PLAY ▶)"></div>
+    <div class="row osd-quick">
+      <button class="small" data-t="PLAY ▶">PLAY ▶</button><button class="small" data-t="● REC">● REC</button>
+      <button class="small" data-t="PAUSE ❚">PAUSE</button><button class="small" data-t="STOP ■">STOP</button>
+      <button class="small" data-t="{hora}">Hora</button><button class="small" data-t="{fecha}">Fecha</button>
+    </div>
+    <div class="row"><span class="lbl w">Lugar</span>
+      <div class="seg" id="osd-pos"><button data-v="tl">↖</button><button data-v="tr">↗</button><button data-v="c">●</button><button data-v="bl">↙</button><button data-v="br">↘</button></div></div>
+    <div class="row"><span class="lbl w">Tamaño</span>
+      <div class="seg" id="osd-size"><button data-v="1">S</button><button data-v="2">M</button><button data-v="3">L</button><button data-v="4">XL</button></div></div>
+    <div class="row">
+      <button id="osd-on" class="toggle wide">Mostrar texto</button>
+      <button id="osd-blink" class="toggle wide">Parpadeo (beat)</button>
+    </div>
+
     <h3>Blackout</h3>
     <div class="row"><span class="lbl w">Fade <i id="v-blackout_time">1.0s</i></span><div class="fader" id="f-blackout_time" data-cmd="blackout_time" data-max="5"></div></div>
 
@@ -134,7 +150,7 @@
       <button id="bpm-double" class="small">×2</button>
     </div>
     <div class="row">
-      <button id="mic" class="toggle wide">🎤 Detectar BPM por micrófono</button>
+      <button id="mic" class="toggle wide">🎤 Micrófono: BPM + Línea de audio</button>
     </div>
     <canvas id="mic-meter" width="300" height="40"></canvas>
     <p class="hint" id="mic-hint">El micrófono requiere abrir la app por https (ver README).</p>

@@ -42,6 +42,8 @@ uniform vec3 tint;
 uniform float tintAmount;
 uniform float strobe;
 uniform vec3 strobeColor;
+uniform sampler2D texT;  // texto VHS (RGBA)
+uniform float hasT;
 
 vec3 sampleDeck(sampler2D tex, vec2 fit, vec3 clip, vec2 p) {
     vec2 q = (p / clip.x + clip.yz) / fit;
@@ -62,9 +64,34 @@ void main() {
     vec3 c = mix(a, b, xfade);
     c = mix(c, c * tint, tintAmount);
     c = mix(c, strobeColor, strobe);
+    if (hasT > 0.5) {
+        vec4 o = texture(texT, uv);
+        c = mix(c, o.rgb, o.a);
+    }
     color = vec4(c * master, 1.0);
 }
 """
+
+
+class OsdCache:
+    """Lienzo RGBA del texto VHS; solo se rehace cuando cambia el texto, el lugar o el minuto."""
+
+    def __init__(self):
+        self.key, self.img = None, None
+        self.serial = 0
+
+    def get(self, s):
+        o = s.get("osd") or {}
+        if not o.get("on"):
+            return None
+        from . import osd
+        key = (osd.expand(o.get("text", "")), o.get("pos"), o.get("size"), round(s["screen_aspect"], 2))
+        if key != self.key:
+            self.key = key
+            img = osd.render(key[0], key[1], key[2], s["screen_aspect"])
+            self.img = None if img is None else (img * 255).astype("uint8")
+            self.serial += 1
+        return self.img
 
 
 def fit_scale(clip_aspect, screen_aspect, mode):
@@ -116,6 +143,8 @@ class GLRenderer:
         self.serial = {"A": -1, "B": -1}
         self.prog["texA"].value = 0
         self.prog["texB"].value = 1
+        self.prog["texT"].value = 2
+        self.osd, self.osd_tex, self.osd_serial = OsdCache(), None, -1
 
     def _upload(self, k, d, unit):
         t = self.tex[k]
@@ -151,6 +180,20 @@ class GLRenderer:
         p["tintAmount"].value = s["tint_amount"]
         p["strobe"].value = s["strobe"]
         p["strobeColor"].value = s["strobe_color"]
+        img = self.osd.get(s)
+        if img is not None:
+            h, w = img.shape[:2]
+            if self.osd_tex is None or self.osd_tex.size != (w, h):
+                if self.osd_tex is not None:
+                    self.osd_tex.release()
+                self.osd_tex = self.ctx.texture((w, h), 4)
+                self.osd_tex.filter = (self.moderngl.NEAREST, self.moderngl.NEAREST)
+                self.osd_serial = -1
+            if self.osd_serial != self.osd.serial:
+                self.osd_tex.write(img.tobytes())
+                self.osd_serial = self.osd.serial
+            self.osd_tex.use(2)
+        p["hasT"].value = 1.0 if img is not None else 0.0
         self.ctx.viewport = (0, 0, *self.size)
         self.ctx.clear(0, 0, 0)
         self.vao.render(mode=self.ctx.TRIANGLE_STRIP)
@@ -171,6 +214,7 @@ FRAG2 = (FRAG.replace("#version 140", "#version 120")
          .replace("in vec2 uv;", "varying vec2 uv;")
          .replace("out vec4 color;", "")
          .replace("texture(tex, tc)", "texture2D(tex, tc)")
+         .replace("texture(texT, uv)", "texture2D(texT, uv)")
          .replace("color = vec4(", "gl_FragColor = vec4("))
 
 
@@ -203,9 +247,18 @@ class GL2Renderer:
         GL.glPixelStorei(GL.GL_UNPACK_ALIGNMENT, 1)
         self.u = {n: GL.glGetUniformLocation(self.prog, n) for n in (
             "texA", "texB", "hasA", "hasB", "fitA", "fitB", "clipA", "clipB", "zoom", "offset", "droste",
-            "xfade", "master", "tint", "tintAmount", "strobe", "strobeColor")}
+            "xfade", "master", "tint", "tintAmount", "strobe", "strobeColor", "texT", "hasT")}
         GL.glUniform1i(self.u["texA"], 0)
         GL.glUniform1i(self.u["texB"], 1)
+        GL.glUniform1i(self.u["texT"], 2)
+        self.osd = OsdCache()
+        GL.glActiveTexture(GL.GL_TEXTURE2)
+        self.osd_tex = GL.glGenTextures(1)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self.osd_tex)
+        for p, v in ((GL.GL_TEXTURE_MIN_FILTER, GL.GL_NEAREST), (GL.GL_TEXTURE_MAG_FILTER, GL.GL_NEAREST),
+                     (GL.GL_TEXTURE_WRAP_S, GL.GL_CLAMP_TO_EDGE), (GL.GL_TEXTURE_WRAP_T, GL.GL_CLAMP_TO_EDGE)):
+            GL.glTexParameteri(GL.GL_TEXTURE_2D, p, v)
+        self.osd_serial = -1
         self.tex = {}
         for unit, k in enumerate("AB"):
             GL.glActiveTexture(GL.GL_TEXTURE0 + unit)
@@ -258,6 +311,14 @@ class GL2Renderer:
         GL.glUniform1f(u["tintAmount"], s["tint_amount"])
         GL.glUniform1f(u["strobe"], s["strobe"])
         GL.glUniform3f(u["strobeColor"], *s["strobe_color"])
+        img = self.osd.get(s)
+        if img is not None and self.osd_serial != self.osd.serial:
+            GL.glActiveTexture(GL.GL_TEXTURE2)
+            GL.glBindTexture(GL.GL_TEXTURE_2D, self.osd_tex)
+            h, w = img.shape[:2]
+            GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RGBA, w, h, 0, GL.GL_RGBA, GL.GL_UNSIGNED_BYTE, img.tobytes())
+            self.osd_serial = self.osd.serial
+        GL.glUniform1f(u["hasT"], 1.0 if img is not None else 0.0)
         GL.glViewport(0, 0, *self.size)
         GL.glDrawArrays(GL.GL_TRIANGLE_STRIP, 0, 4)
         pygame.display.flip()
@@ -275,6 +336,7 @@ class SDLRenderer:
         self.gray = pygame.Surface(self.size)
         self.surf = {"A": None, "B": None}
         self.serial = {"A": -1, "B": -1}
+        self.osd, self.osd_serial, self.osd_surf = OsdCache(), -1, None
 
     def _surface(self, k, d):
         if d.frame is None:
@@ -326,6 +388,14 @@ class SDLRenderer:
             c.blit(self.gray, (0, 0), special_flags=pygame.BLEND_RGB_MULT)
         if s["strobe"] > 0:
             c.fill(tuple(int(255 * v) for v in s["strobe_color"]))
+        img = self.osd.get(s)
+        if img is not None:
+            if self.osd_serial != self.osd.serial:
+                h, w = img.shape[:2]
+                surf = pygame.image.frombuffer(img.tobytes(), (w, h), "RGBA")
+                self.osd_surf = pygame.transform.scale(surf, self.size)  # sin suavizar: pixeles VHS
+                self.osd_serial = self.osd.serial
+            c.blit(self.osd_surf, (0, 0))
         if s["master"] < 0.998:
             self._mul(c, s["master"])
         pygame.display.flip()

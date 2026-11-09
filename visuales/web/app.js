@@ -80,6 +80,12 @@ function onState(s) {
     el.querySelector('.dname').textContent = c ? c.name : '—';
   }
   $('#strobe').classList.toggle('on', s.strobe);
+  if (s.osd) {
+    const ti = $('#osd-text');
+    if (document.activeElement !== ti && ti.value !== s.osd.text) ti.value = s.osd.text;
+    $('#osd-on').classList.toggle('on', s.osd.on); $('#osd-blink').classList.toggle('on', s.osd.blink);
+    segOn('#osd-pos', s.osd.pos); segOn('#osd-size', String(s.osd.size));
+  }
   $('#quake').classList.toggle('on', s.quake);
   setFader('f-quake', s.quake_amount);
   setFader('f-zoom', s.zoom); $('#v-zoom').textContent = s.zoom.toFixed(1) + 'x';
@@ -353,6 +359,22 @@ for (const c of COLORS) {
   b.onclick = () => send('tint', { color: c, ...(state && state.tint_amount === 0 ? { amount: 0.7 } : {}) });
   $('#swatches').appendChild(b);
 }
+
+// ---------------- texto VHS ----------------
+let osdTimer = null;
+$('#osd-text').oninput = (e) => {
+  clearTimeout(osdTimer);
+  osdTimer = setTimeout(() => send('osd', { text: e.target.value }), 250);
+};
+$$('.osd-quick button').forEach((b) => b.onclick = () => {
+  const ti = $('#osd-text');
+  ti.value = (ti.value ? ti.value + ' ' : '') + b.dataset.t;
+  send('osd', { text: ti.value, on: true });
+});
+$$('#osd-pos button').forEach((b) => b.onclick = () => send('osd', { pos: b.dataset.v }));
+$$('#osd-size button').forEach((b) => b.onclick = () => send('osd', { size: parseInt(b.dataset.v, 10) }));
+$('#osd-on').onclick = () => send('osd', { on: !(state && state.osd && state.osd.on), text: $('#osd-text').value });
+$('#osd-blink').onclick = () => send('osd', { blink: !(state && state.osd && state.osd.blink) });
 
 // ---------------- BPM por microfono (experimental) ----------------
 // 32 bandas logaritmicas de 40 Hz a 10 kHz, 0..255

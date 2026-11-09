@@ -86,6 +86,8 @@ class Mixer:
         self.zoom_cycle = 4         # beats por ciclo
         self.quake = False
         self.quake_amount = 0.5
+        # texto en pantalla estilo VHS
+        self.osd = {"text": "", "on": False, "pos": "tl", "size": 2, "blink": False}
         self.beat = BeatClock()
         self._last = time.monotonic()
 
@@ -170,6 +172,18 @@ class Mixer:
                     self.quake = bool(data["on"])
                 if "amount" in data:
                     self.quake_amount = _clamp(data["amount"])
+            elif cmd == "osd":
+                o = self.osd
+                if "text" in data:
+                    o["text"] = str(data["text"])[:200]
+                if "on" in data:
+                    o["on"] = bool(data["on"])
+                if data.get("pos") in ("tl", "tr", "c", "bl", "br"):
+                    o["pos"] = data["pos"]
+                if "size" in data and int(data["size"]) in (1, 2, 3, 4):
+                    o["size"] = int(data["size"])
+                if "blink" in data:
+                    o["blink"] = bool(data["blink"])
             elif cmd == "tap":
                 self.beat.tap()
             elif cmd == "bpm":
@@ -259,6 +273,8 @@ class Mixer:
                 "tint_amount": self.tint_amount,
                 "strobe": strobe,
                 "strobe_color": scol,
+                "osd": dict(self.osd, on=self.osd["on"] and bool(self.osd["text"].strip()) and
+                            (not self.osd["blink"] or (beats % 1.0) < 0.6)),
             }
 
     def live_settings(self):
@@ -268,7 +284,8 @@ class Mixer:
                     "tint_amount": self.tint_amount, "strobe_div": self.strobe_div,
                     "strobe_color": self.strobe_color, "fade_time": self.fade_time,
                     "blackout_time": self.blackout_time, "zoom_cycle": self.zoom_cycle,
-                    "quake_amount": self.quake_amount, "master": self.master}
+                    "quake_amount": self.quake_amount, "master": self.master,
+                    "osd": {k: self.osd[k] for k in ("text", "pos", "size", "blink")}}
 
     def load_live(self, d):
         """Carga los ajustes en vivo de un show (los efectos activos se apagan)."""
@@ -295,6 +312,12 @@ class Mixer:
                     self.fade_time = max(0.0, min(30.0, float(d["fade_time"])))
                 if "blackout_time" in d:
                     self.blackout_time = max(0.0, min(10.0, float(d["blackout_time"])))
+                if isinstance(d.get("osd"), dict):
+                    o = d["osd"]
+                    self.osd.update(text=str(o.get("text", ""))[:200], on=False,
+                                    pos=o.get("pos", "tl") if o.get("pos") in ("tl", "tr", "c", "bl", "br") else "tl",
+                                    size=int(o.get("size", 2)) if int(o.get("size", 2)) in (1, 2, 3, 4) else 2,
+                                    blink=bool(o.get("blink", False)))
             except (TypeError, ValueError):
                 pass
             self.strobe = False
@@ -325,6 +348,7 @@ class Mixer:
                 "zoom_cycle": self.zoom_cycle,
                 "quake": self.quake,
                 "quake_amount": self.quake_amount,
+                "osd": dict(self.osd),
                 "bpm": round(self.beat.bpm, 1),
                 "beat": int(self.beat.beats()),
             }
