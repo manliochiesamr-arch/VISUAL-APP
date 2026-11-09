@@ -355,6 +355,18 @@ for (const c of COLORS) {
 }
 
 // ---------------- BPM por microfono (experimental) ----------------
+// 32 bandas logaritmicas de 40 Hz a 10 kHz, 0..255
+function sendSpectrum() {
+  const buf = mic.spBuf; mic.sp.getByteFrequencyData(buf);
+  const hz = mic.ctx.sampleRate / 2 / buf.length, out = [];
+  for (let i = 0; i < 32; i++) {
+    const f0 = 40 * Math.pow(250, i / 32), f1 = 40 * Math.pow(250, (i + 1) / 32);
+    let a = Math.floor(f0 / hz), b = Math.max(a + 1, Math.ceil(f1 / hz)), m = 0;
+    for (let j = a; j < b && j < buf.length; j++) m = Math.max(m, buf[j]);
+    out.push(m);
+  }
+  send('audio', { b: out });
+}
 const mic = { on: false, ctx: null, stream: null, onsets: [], avg: 0, last: 0, history: [], sent: 0 };
 $('#mic').onclick = async () => {
   if (mic.on) return stopMic();
@@ -370,6 +382,9 @@ $('#mic').onclick = async () => {
   const lp = mic.ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 150;
   const an = mic.ctx.createAnalyser(); an.fftSize = 1024;
   src.connect(lp); lp.connect(an);
+  // espectro completo para los visuales que reaccionan al sonido (Linea de audio)
+  const sp = mic.ctx.createAnalyser(); sp.fftSize = 1024; sp.smoothingTimeConstant = 0.4;
+  src.connect(sp); mic.sp = sp; mic.spBuf = new Uint8Array(sp.frequencyBinCount);
   mic.an = an; mic.buf = new Float32Array(an.fftSize); mic.on = true; mic.onsets = []; mic.history = [];
   $('#mic').classList.add('on'); $('#mic-hint').textContent = 'Escuchando… acercá el teléfono al bombo.';
   micLoop();
@@ -389,6 +404,7 @@ function micLoop() {
   if (e > mic.avg * 1.5 && e > 0.01 && now - mic.last > 280) { onset = true; mic.last = now; mic.onsets.push(now); }
   mic.onsets = mic.onsets.filter((t) => now - t < 8000);
   if (onset && mic.onsets.length >= 6) estimateBpm(now);
+  if (now - (mic.specT || 0) > 50) { mic.specT = now; sendSpectrum(); }
   drawMeter(e, onset);
   requestAnimationFrame(micLoop);
 }

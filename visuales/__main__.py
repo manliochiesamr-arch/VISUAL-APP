@@ -60,6 +60,7 @@ def main():
     mixer.load_live(shows.active_live())
     server = Server(cfg, mixer, library, shows)
     server.start_in_thread()
+    from . import generators
     from .usb import UsbImporter
     usb = UsbImporter(cfg, library, shows, server.notify_usb)
     server.usb = usb
@@ -89,6 +90,7 @@ def main():
         now = time.monotonic()
         dt, last = now - last, now
         s = mixer.tick()
+        generators.set_audio(s["audio"])
         for k, d in decks.items():
             clip = s["decks"][k]["clip"]
             d.load(library.path_of(clip) if clip else None)

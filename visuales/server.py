@@ -104,6 +104,9 @@ class Server:
                             await self.broadcast({"type": "state", **self.mixer.snapshot()})
                         await self.broadcast(self.shows.payload())
                     continue
+                if cmd == "audio":  # espectro del mic del telefono (20 por segundo): no se guarda ni se difunde
+                    self.mixer.set_audio(data.get("b"))
+                    continue
                 if cmd == "cue" and data.get("clip"):
                     data["fx"] = self.library.get_fx(data["clip"])
                 if self.mixer.apply(cmd, data):

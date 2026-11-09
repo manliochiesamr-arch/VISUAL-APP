@@ -99,6 +99,16 @@ class Mixer:
     def next_deck(self):
         return "B" if self.xfade < 0.5 else "A"
 
+    # ---------- audio del telefono ----------
+    def set_audio(self, bands):
+        """bands: lista de 0..255 (graves a agudos) que manda el telefono."""
+        try:
+            vals = [max(0.0, min(1.0, float(v) / 255.0)) for v in list(bands)[:64]]
+        except (TypeError, ValueError):
+            return
+        with self.lock:
+            self.audio, self.audio_t = vals, time.monotonic()
+
     # ---------- comandos ----------
     def apply(self, cmd, data):
         """Aplica un comando del telefono. Devuelve True si cambio algo."""
@@ -238,6 +248,7 @@ class Mixer:
             return {
                 "screen_aspect": 4 / 3 if self.screen_aspect == "4:3" else 16 / 9,
                 "beats": beats,
+                "audio": getattr(self, "audio", []) if now - getattr(self, "audio_t", 0) < 0.6 else [],
                 "zoom": zoom,
                 "offset": offset,
                 "droste": droste,
