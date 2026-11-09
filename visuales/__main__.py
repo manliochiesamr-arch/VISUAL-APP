@@ -95,7 +95,7 @@ def main():
             # el deck que no se ve queda congelado en su primer frame
             # y arranca cuando empieza el crossfade (GO)
             weight = s["xfade"] if k == "B" else 1.0 - s["xfade"]
-            d.update(dt, s["decks"][k]["fx"]["speed"] if weight > 0.001 else 0.0)
+            d.update(dt, s["decks"][k]["fx"]["speed"] if weight > 0.001 else 0.0, s["beats"], s["decks"][k]["fx"])
         renderer.draw(decks, s)
         if renderer.name == "sin-video" and now - t_retry > 15:
             # reintentar la pantalla cada 15 s (por si se conecto el HDMI o se libero la pantalla)

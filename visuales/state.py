@@ -8,7 +8,8 @@ STROBE_DIVS = (0.25, 0.5, 1, 2, 4)  # destellos por beat
 ZOOM_CYCLES = (0.5, 1, 2, 4, 8, 16, 32)  # beats por ciclo de zoom
 ZOOM_MODES = ("fixed", "pulse", "in", "out")
 FITS = ("fit", "fill", "stretch")
-DEFAULT_FX = {"fit": "fit", "zoom": 1.0, "panx": 0.0, "pany": 0.0, "speed": 1.0}
+DEFAULT_FX = {"fit": "fit", "zoom": 1.0, "panx": 0.0, "pany": 0.0, "speed": 1.0,
+              "hue": 0.0, "detail": 0.5}  # hue/detail: solo para los generadores
 
 
 def clean_fx(fx):
@@ -17,7 +18,8 @@ def clean_fx(fx):
     fx = fx or {}
     if fx.get("fit") in FITS:
         out["fit"] = fx["fit"]
-    for k, lo, hi in (("zoom", 0.25, 4.0), ("panx", -1.0, 1.0), ("pany", -1.0, 1.0), ("speed", 0.0, 4.0)):
+    for k, lo, hi in (("zoom", 0.25, 4.0), ("panx", -1.0, 1.0), ("pany", -1.0, 1.0), ("speed", 0.0, 4.0),
+                      ("hue", 0.0, 1.0), ("detail", 0.0, 1.0)):
         if k in fx:
             try:
                 out[k] = max(lo, min(hi, float(fx[k])))
@@ -235,6 +237,7 @@ class Mixer:
                 zoom *= 1.0 + 0.1 * q * rnd.random()
             return {
                 "screen_aspect": 4 / 3 if self.screen_aspect == "4:3" else 16 / 9,
+                "beats": beats,
                 "zoom": zoom,
                 "offset": offset,
                 "droste": droste,

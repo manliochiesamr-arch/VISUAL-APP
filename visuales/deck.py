@@ -19,6 +19,7 @@ class Deck:
         self.t = 0.0           # reloj del clip en segundos
         self.idx = 0           # frames consumidos
         self.frame_serial = 0
+        self.gen = None        # nombre del generador si el clip es generativo
 
     @property
     def aspect(self):
@@ -35,6 +36,13 @@ class Deck:
         if src is None:
             return
         path, self.w, self.h = src
+        self.t = 0.0
+        self.idx = 0
+        if str(path).startswith("gen:"):
+            self.gen = str(path)[4:]
+            log.info("deck %s <- generador %s", self.name, self.gen)
+            return
+        self.gen = None
         fb = self.w * self.h * 3
         cmd = [
             "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
@@ -81,8 +89,21 @@ class Deck:
         self.proc = None
         self.src = None
 
-    def update(self, dt, speed):
+    def update(self, dt, speed, beats=0.0, fx=None):
         """Avanza el reloj del clip y saca de la cola los frames necesarios."""
+        if self.gen and self.src:
+            self.t += dt * speed
+            self.acc = getattr(self, "acc", 0.0) + dt
+            # se dibuja a los fps del video (25), no a los del render: ahorra CPU en la Pi
+            if (speed > 0 and self.acc >= 1.0 / self.fps) or self.frame is None:
+                self.acc = 0.0
+                from .generators import render
+                fx = fx or {}
+                # beats tambien escalados por la velocidad del clip (0 = congelado)
+                self.frame = render(self.gen, self.t, beats * (1.0 if speed > 0 else 0.0),
+                                    fx.get("hue", 0.0), fx.get("detail", 0.5))
+                self.frame_serial += 1
+            return
         if not self.proc:
             return
         self.t += dt * speed

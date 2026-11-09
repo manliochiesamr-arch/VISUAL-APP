@@ -106,3 +106,6 @@ h3:first-child { margin-top: 4px; }
 .ask input { width: 100%; margin: 10px 0 4px; font: inherit; font-size: 17px; color: var(--txt); background: var(--bg);
   border: 1px solid var(--line); border-radius: 10px; padding: 10px; -webkit-user-select: text; user-select: text; }
 .ask .ok { background: var(--acc); border-color: var(--acc); }
+.fader.hue .fill { background: transparent; }
+.fader.hue { background: linear-gradient(90deg, #f33, #fd3, #3f6, #3df, #63f, #f3c, #f33); }
+.row[hidden] { display: none; }

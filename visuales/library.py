@@ -27,6 +27,7 @@ class Library:
         self.lock = threading.RLock()
         self.clips = {}
         self._load()
+        self._add_generators()
         self.jobs = queue.Queue()
         threading.Thread(target=self._worker, daemon=True).start()
         # reencolar trabajos que quedaron a medias (corte de luz, etc.)
@@ -39,6 +40,30 @@ class Library:
                 else:
                     c["status"], c["error"] = "error", "archivo original perdido"
         self._save()
+
+    # ---------- generadores (clips sin archivo) ----------
+    def _add_generators(self):
+        from . import generators as g
+        for i, (key, (name, _)) in enumerate(g.GENERATORS.items()):
+            cid = "gen-" + key
+            if cid not in self.clips:
+                self.clips[cid] = {"id": cid, "name": name, "kind": "gen", "gen": key, "status": "ready",
+                                   "error": None, "duration": None, "added": 1000 - i,
+                                   "width": g.W, "height": g.H, "file": "", "source": ""}
+            thumb = self.cfg.thumbs_dir / f"{cid}.jpg"
+            if not thumb.exists():
+                threading.Thread(target=self._gen_thumb, args=(key, thumb), daemon=True).start()
+
+    @staticmethod
+    def _gen_thumb(key, thumb):
+        from . import generators as g
+        try:
+            raw = g.render(key, 2.0, 0.3, 0.0, 0.5)
+            subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "rawvideo",
+                            "-pix_fmt", "rgb24", "-s", f"{g.W}x{g.H}", "-i", "-", "-frames:v", "1",
+                            "-vf", "scale=240:-2", str(thumb)], input=raw, capture_output=True, timeout=30)
+        except Exception:
+            log.exception("miniatura de generador %s", key)
 
     # ---------- persistencia ----------
     def _load(self):
@@ -63,6 +88,8 @@ class Library:
             c = self.clips.get(clip_id)
             if not c or c["status"] != "ready":
                 return None
+            if c.get("kind") == "gen":
+                return "gen:" + c["gen"], c["width"], c["height"]
             path = self.cfg.clips_dir / c["file"]
             if not c.get("width"):
                 c["width"], c["height"] = probe_size(path)
@@ -128,6 +155,8 @@ class Library:
 
     def remove(self, cid):
         with self.lock:
+            if self.clips.get(cid, {}).get("kind") == "gen":
+                return False  # los generadores no se borran (se sacan del show)
             c = self.clips.pop(cid, None)
         if not c:
             return False

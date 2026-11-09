@@ -145,18 +145,18 @@ function renderLibrary() {
   for (const c of clips) {
     const li = document.createElement('li');
     li.className = 'st-' + c.status;
-    const dur = c.duration ? ` · ${Math.round(c.duration)}s` : '';
+    const dur = c.kind === 'gen' ? ' · generativo' : c.duration ? ` · ${Math.round(c.duration)}s` : '';
     li.innerHTML = (c.status === 'ready' ? `<img src="${thumb(c)}">` : '<div class="noimg"></div>') +
       `<div class="meta"><b>${esc(c.name)}</b><small>${label[c.status] || c.status}${c.error ? ': ' + esc(c.error) : ''}${dur}</small></div>` +
       (activeShow() ? `<button class="small inshow${activeShow().clips.includes(c.id) ? ' on' : ''}">${activeShow().clips.includes(c.id) ? '✓ show' : '＋ show'}</button>` : '') +
-      '<button class="small ren">✎</button><button class="small del">🗑</button>';
+      (c.kind === 'gen' ? '' : '<button class="small ren">✎</button><button class="small del">🗑</button>');
     const ins = li.querySelector('.inshow');
     if (ins) ins.onclick = () => send('show_toggle_clip', { id: shows.active, clip: c.id });
-    li.querySelector('.del').onclick = async () => {
+    if (c.kind !== 'gen') li.querySelector('.del').onclick = async () => {
       if (!confirm(`¿Borrar "${c.name}"?`)) return;
       await fetch(`/api/clips/${c.id}`, { method: 'DELETE' });
     };
-    li.querySelector('.ren').onclick = async () => {
+    if (c.kind !== 'gen') li.querySelector('.ren').onclick = async () => {
       const n = await askText('Nombre del video', c.name);
       if (n) await fetch(`/api/clips/${c.id}/rename`, { method: 'POST', body: JSON.stringify({ name: n }) });
     };
@@ -309,6 +309,9 @@ function renderClipPanel() {
   setFader('f-czoom', fx.zoom); $('#v-czoom').textContent = fx.zoom.toFixed(2) + 'x';
   setFader('f-cpanx', fx.panx); setFader('f-cpany', fx.pany);
   setFader('f-cspeed', fx.speed); $('#v-cspeed').textContent = fx.speed.toFixed(2) + 'x';
+  const isGen = !!(c && c.kind === 'gen');
+  $$('#tab-clip .genonly').forEach((el) => { el.hidden = !isGen; });
+  if (isGen) { setFader('f-chue', fx.hue || 0); setFader('f-cdetail', fx.detail ?? 0.5); }
   // vista previa del encuadre con la miniatura
   const pv = $('#preview'), img = $('#pv-img');
   const sa = state.screen === '16:9' ? 16 / 9 : 4 / 3;
