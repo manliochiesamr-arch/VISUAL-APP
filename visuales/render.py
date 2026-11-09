@@ -47,8 +47,12 @@ uniform float tracking;  // glitch: filas corridas + banda de tracking 0..1
 uniform float hueShift;  // rotacion de color 0..1 (vuelta completa)
 uniform float saturation; // 0 = blanco y negro, 1 = normal, 2 = saturado
 uniform float time;
-uniform sampler2D texT;  // texto VHS (RGBA)
+uniform sampler2D texT;  // texto VHS limpio, encima de todo (RGBA)
 uniform float hasT;
+uniform sampler2D texF;  // texto que recibe los efectos en vivo (va dentro de la imagen)
+uniform float hasF;
+uniform vec4 glA;        // glitch propio de cada clip: rgb, tracking, tono, saturacion
+uniform vec4 glB;
 
 vec3 sampleDeck(sampler2D tex, vec2 fit, vec3 clip, vec2 p) {
     vec2 q = (p / clip.x + clip.yz) / fit;
@@ -62,28 +66,70 @@ vec3 sampleDeck(sampler2D tex, vec2 fit, vec3 clip, vec2 p) {
     return texture(tex, tc).rgb;
 }
 
-vec3 scene(vec2 p) {
-    vec3 a = hasA > 0.5 ? sampleDeck(texA, fitA, clipA, p) : vec3(0.0);
-    vec3 b = hasB > 0.5 ? sampleDeck(texB, fitB, clipB, p) : vec3(0.0);
-    return mix(a, b, xfade);
-}
-
 float hash(vec2 v) {
     return fract(sin(dot(v, vec2(12.9898, 78.233))) * 43758.5453);
+}
+
+// corrimiento horizontal del tracking VHS para esta fila; band = intensidad de la banda que baja
+float trackDx(out float band) {
+    float frame = floor(time * 25.0);
+    float row = floor(uv.y * 160.0);
+    float by = fract(time * 0.23);
+    band = smoothstep(0.07, 0.0, abs(uv.y - by));
+    float jit = (hash(vec2(row, frame)) - 0.5) * 0.02;
+    float tear = (hash(vec2(floor(row / 6.0), frame)) - 0.5) * band * 0.25;
+    return jit + tear + 0.01 * sin(uv.y * 40.0 + time * 7.0);
+}
+
+vec3 hueSat(vec3 c, float h, float s) {
+    if (h > 0.001) {                                         // rotacion de tono (YIQ)
+        float yy = dot(c, vec3(0.299, 0.587, 0.114));
+        float ii = dot(c, vec3(0.596, -0.274, -0.322));
+        float qq = dot(c, vec3(0.211, -0.523, 0.312));
+        float ang = h * 6.2831853;
+        float ca = cos(ang), sa = sin(ang);
+        float i2 = ii * ca - qq * sa, q2 = ii * sa + qq * ca;
+        c = vec3(yy + 0.956 * i2 + 0.621 * q2, yy - 0.272 * i2 - 0.647 * q2, yy - 1.106 * i2 + 1.703 * q2);
+    }
+    float luma = dot(c, vec3(0.299, 0.587, 0.114));
+    return clamp(mix(vec3(luma), c, s), 0.0, 1.0);
+}
+
+// un deck con su glitch propio (el del clip)
+vec3 deck(sampler2D tex, vec2 fit, vec3 clip, vec4 g, vec2 p) {
+    float band = 0.0;
+    if (g.y > 0.001) p.x += g.y * trackDx(band);
+    vec3 c;
+    if (g.x > 0.001) {
+        float dx = g.x * 0.035;
+        c = vec3(sampleDeck(tex, fit, clip, p + vec2(dx, 0.0)).r, sampleDeck(tex, fit, clip, p).g,
+                 sampleDeck(tex, fit, clip, p - vec2(dx, 0.0)).b);
+    } else {
+        c = sampleDeck(tex, fit, clip, p);
+    }
+    if (g.y > 0.001) c = mix(c, vec3(hash(uv * 400.0 + time)), band * g.y * 0.6);
+    if (g.z > 0.001 || abs(g.w - 1.0) > 0.001) c = hueSat(c, g.z, g.w);
+    return c;
+}
+
+vec3 scene(vec2 p) {
+    vec3 a = hasA > 0.5 ? deck(texA, fitA, clipA, glA, p) : vec3(0.0);
+    vec3 b = hasB > 0.5 ? deck(texB, fitB, clipB, glB, p) : vec3(0.0);
+    vec3 c = mix(a, b, xfade);
+    if (hasF > 0.5) {                                        // texto con efectos: se mueve con la imagen
+        vec2 tf = p + 0.5;
+        if (tf.x >= 0.0 && tf.x <= 1.0 && tf.y >= 0.0 && tf.y <= 1.0) {
+            vec4 o = texture(texF, tf);
+            c = mix(c, o.rgb, o.a);
+        }
+    }
+    return c;
 }
 
 void main() {
     vec2 p = (uv - 0.5) / zoom + offset;
     float band = 0.0;
-    if (tracking > 0.001) {
-        float frame = floor(time * 25.0);
-        float row = floor(uv.y * 160.0);
-        float by = fract(time * 0.23);                       // banda de tracking que baja
-        band = smoothstep(0.07, 0.0, abs(uv.y - by));
-        float jit = (hash(vec2(row, frame)) - 0.5) * 0.02;   // temblor fino de cada fila
-        float tear = (hash(vec2(floor(row / 6.0), frame)) - 0.5) * band * 0.25;
-        p.x += tracking * (jit + tear + 0.01 * sin(uv.y * 40.0 + time * 7.0));
-    }
+    if (tracking > 0.001) p.x += tracking * trackDx(band);
     vec3 c;
     if (rgbSplit > 0.001) {
         float dx = rgbSplit * 0.035;
@@ -95,17 +141,7 @@ void main() {
         float n = hash(uv * 400.0 + time);
         c = mix(c, vec3(n), band * tracking * 0.6);
     }
-    if (hueShift > 0.001) {                                  // rotacion de tono (YIQ)
-        float yy = dot(c, vec3(0.299, 0.587, 0.114));
-        float ii = dot(c, vec3(0.596, -0.274, -0.322));
-        float qq = dot(c, vec3(0.211, -0.523, 0.312));
-        float ang = hueShift * 6.2831853;
-        float ca = cos(ang), sa = sin(ang);
-        float i2 = ii * ca - qq * sa, q2 = ii * sa + qq * ca;
-        c = vec3(yy + 0.956 * i2 + 0.621 * q2, yy - 0.272 * i2 - 0.647 * q2, yy - 1.106 * i2 + 1.703 * q2);
-    }
-    float luma = dot(c, vec3(0.299, 0.587, 0.114));
-    c = clamp(mix(vec3(luma), c, saturation), 0.0, 1.0);
+    c = hueSat(c, hueShift, saturation);
     c = mix(c, c * tint, tintAmount);
     c = mix(c, strobeColor, strobe);
     if (hasT > 0.5) {
@@ -122,15 +158,22 @@ GLITCH_UNIFORMS = (("rgbSplit", "rgb", 0.0), ("tracking", "tracking", 0.0), ("hu
                    ("saturation", "sat", 1.0), ("time", "time", 0.0))
 
 
+def clip_glitch(fx):
+    """Glitch propio del clip para el shader: (rgb, tracking, tono, saturacion)."""
+    return (float(fx.get("g_rgb", 0.0)), float(fx.get("g_trk", 0.0)),
+            float(fx.get("g_hue", 0.0)), float(fx.get("g_sat", 1.0)))
+
+
 class OsdCache:
     """Lienzo RGBA del texto VHS; solo se rehace cuando cambia el texto, el lugar o el minuto."""
 
-    def __init__(self):
+    def __init__(self, fx=False):
         self.key, self.img = None, None
         self.serial = 0
+        self.fx = fx  # True = solo los textos que reciben los efectos en vivo
 
     def get(self, s):
-        layers = [o for o in (s.get("osd") or []) if o.get("on")]
+        layers = [o for o in (s.get("osd") or []) if o.get("on") and bool(o.get("fx")) == self.fx]
         if not layers:
             return None
         from . import osd
@@ -138,6 +181,9 @@ class OsdCache:
                       tuple(o.get("color") or (1.0, 1.0, 1.0))) for o in layers),
                round(s["screen_aspect"], 2))
         if key != self.key:
+            if not layers:
+                self.key, self.img = key, None
+                return None
             self.key = key
             img = osd.render_layers(key[0], s["screen_aspect"])
             self.img = None if img is None else (img * 255).astype("uint8")
@@ -194,8 +240,12 @@ class GLRenderer:
         self.serial = {"A": -1, "B": -1}
         self.prog["texA"].value = 0
         self.prog["texB"].value = 1
-        self.prog["texT"].value = 2
-        self.osd, self.osd_tex, self.osd_serial = OsdCache(), None, -1
+        # textos: limpio (unidad 2) y con efectos (unidad 3)
+        self.osd_slots = []
+        for unit, has, sampler, fx in ((2, "hasT", "texT", False), (3, "hasF", "texF", True)):
+            if sampler in self.prog:
+                self.prog[sampler].value = unit
+            self.osd_slots.append({"cache": OsdCache(fx), "tex": None, "serial": -1, "unit": unit, "has": has})
 
     def _upload(self, k, d, unit):
         t = self.tex[k]
@@ -235,20 +285,25 @@ class GLRenderer:
         for name, key, dflt in GLITCH_UNIFORMS:
             if name in p:  # el compilador quita los uniforms que no se usan
                 p[name].value = float(g.get(key, dflt))
-        img = self.osd.get(s)
-        if img is not None:
-            h, w = img.shape[:2]
-            if self.osd_tex is None or self.osd_tex.size != (w, h):
-                if self.osd_tex is not None:
-                    self.osd_tex.release()
-                self.osd_tex = self.ctx.texture((w, h), 4)
-                self.osd_tex.filter = (self.moderngl.NEAREST, self.moderngl.NEAREST)
-                self.osd_serial = -1
-            if self.osd_serial != self.osd.serial:
-                self.osd_tex.write(img.tobytes())
-                self.osd_serial = self.osd.serial
-            self.osd_tex.use(2)
-        p["hasT"].value = 1.0 if img is not None else 0.0
+        for k in "AB":
+            if "gl" + k in p:
+                p["gl" + k].value = clip_glitch(s["decks"][k]["fx"])
+        for sl in self.osd_slots:
+            img = sl["cache"].get(s)
+            if img is not None:
+                h, w = img.shape[:2]
+                if sl["tex"] is None or sl["tex"].size != (w, h):
+                    if sl["tex"] is not None:
+                        sl["tex"].release()
+                    sl["tex"] = self.ctx.texture((w, h), 4)
+                    sl["tex"].filter = (self.moderngl.NEAREST, self.moderngl.NEAREST)
+                    sl["serial"] = -1
+                if sl["serial"] != sl["cache"].serial:
+                    sl["tex"].write(img.tobytes())
+                    sl["serial"] = sl["cache"].serial
+                sl["tex"].use(sl["unit"])
+            if sl["has"] in p:
+                p[sl["has"]].value = 1.0 if img is not None else 0.0
         self.ctx.viewport = (0, 0, *self.size)
         self.ctx.clear(0, 0, 0)
         self.vao.render(mode=self.ctx.TRIANGLE_STRIP)
@@ -270,6 +325,7 @@ FRAG2 = (FRAG.replace("#version 140", "#version 120")
          .replace("out vec4 color;", "")
          .replace("texture(tex, tc)", "texture2D(tex, tc)")
          .replace("texture(texT, uv)", "texture2D(texT, uv)")
+         .replace("texture(texF, tf)", "texture2D(texF, tf)")
          .replace("color = vec4(", "gl_FragColor = vec4("))
 
 
@@ -302,19 +358,22 @@ class GL2Renderer:
         GL.glPixelStorei(GL.GL_UNPACK_ALIGNMENT, 1)
         self.u = {n: GL.glGetUniformLocation(self.prog, n) for n in (
             "texA", "texB", "hasA", "hasB", "fitA", "fitB", "clipA", "clipB", "zoom", "offset", "droste",
-            "xfade", "master", "tint", "tintAmount", "strobe", "strobeColor", "texT", "hasT",
+            "xfade", "master", "tint", "tintAmount", "strobe", "strobeColor", "texT", "hasT", "texF", "hasF",
+            "glA", "glB",
             *[n for n, _, _ in GLITCH_UNIFORMS])}
         GL.glUniform1i(self.u["texA"], 0)
         GL.glUniform1i(self.u["texB"], 1)
-        GL.glUniform1i(self.u["texT"], 2)
-        self.osd = OsdCache()
-        GL.glActiveTexture(GL.GL_TEXTURE2)
-        self.osd_tex = GL.glGenTextures(1)
-        GL.glBindTexture(GL.GL_TEXTURE_2D, self.osd_tex)
-        for p, v in ((GL.GL_TEXTURE_MIN_FILTER, GL.GL_NEAREST), (GL.GL_TEXTURE_MAG_FILTER, GL.GL_NEAREST),
-                     (GL.GL_TEXTURE_WRAP_S, GL.GL_CLAMP_TO_EDGE), (GL.GL_TEXTURE_WRAP_T, GL.GL_CLAMP_TO_EDGE)):
-            GL.glTexParameteri(GL.GL_TEXTURE_2D, p, v)
-        self.osd_serial = -1
+        # textos: limpio (unidad 2) y con efectos (unidad 3)
+        self.osd_slots = []
+        for unit, has, sampler, fx in ((2, "hasT", "texT", False), (3, "hasF", "texF", True)):
+            GL.glUniform1i(self.u[sampler], unit)
+            GL.glActiveTexture(GL.GL_TEXTURE0 + unit)
+            tex = GL.glGenTextures(1)
+            GL.glBindTexture(GL.GL_TEXTURE_2D, tex)
+            for p, v in ((GL.GL_TEXTURE_MIN_FILTER, GL.GL_NEAREST), (GL.GL_TEXTURE_MAG_FILTER, GL.GL_NEAREST),
+                         (GL.GL_TEXTURE_WRAP_S, GL.GL_CLAMP_TO_EDGE), (GL.GL_TEXTURE_WRAP_T, GL.GL_CLAMP_TO_EDGE)):
+                GL.glTexParameteri(GL.GL_TEXTURE_2D, p, v)
+            self.osd_slots.append({"cache": OsdCache(fx), "tex": tex, "serial": -1, "unit": unit, "has": has})
         self.tex = {}
         for unit, k in enumerate("AB"):
             GL.glActiveTexture(GL.GL_TEXTURE0 + unit)
@@ -370,14 +429,17 @@ class GL2Renderer:
         g = s.get("glitch") or {}
         for name, key, dflt in GLITCH_UNIFORMS:
             GL.glUniform1f(u[name], float(g.get(key, dflt)))
-        img = self.osd.get(s)
-        if img is not None and self.osd_serial != self.osd.serial:
-            GL.glActiveTexture(GL.GL_TEXTURE2)
-            GL.glBindTexture(GL.GL_TEXTURE_2D, self.osd_tex)
-            h, w = img.shape[:2]
-            GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RGBA, w, h, 0, GL.GL_RGBA, GL.GL_UNSIGNED_BYTE, img.tobytes())
-            self.osd_serial = self.osd.serial
-        GL.glUniform1f(u["hasT"], 1.0 if img is not None else 0.0)
+        for k in "AB":
+            GL.glUniform4f(u["gl" + k], *clip_glitch(s["decks"][k]["fx"]))
+        for sl in self.osd_slots:
+            img = sl["cache"].get(s)
+            if img is not None and sl["serial"] != sl["cache"].serial:
+                GL.glActiveTexture(GL.GL_TEXTURE0 + sl["unit"])
+                GL.glBindTexture(GL.GL_TEXTURE_2D, sl["tex"])
+                h, w = img.shape[:2]
+                GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RGBA, w, h, 0, GL.GL_RGBA, GL.GL_UNSIGNED_BYTE, img.tobytes())
+                sl["serial"] = sl["cache"].serial
+            GL.glUniform1f(u[sl["has"]], 1.0 if img is not None else 0.0)
         GL.glViewport(0, 0, *self.size)
         GL.glDrawArrays(GL.GL_TRIANGLE_STRIP, 0, 4)
         pygame.display.flip()
@@ -395,7 +457,7 @@ class SDLRenderer:
         self.gray = pygame.Surface(self.size)
         self.surf = {"A": None, "B": None}
         self.serial = {"A": -1, "B": -1}
-        self.osd, self.osd_serial, self.osd_surf = OsdCache(), -1, None
+        self.osd_slots = [{"cache": OsdCache(fx), "serial": -1, "surf": None} for fx in (True, False)]
 
     def _surface(self, k, d):
         if d.frame is None:
@@ -441,23 +503,28 @@ class SDLRenderer:
             if w < 0.998:
                 self._mul(self.tmp, w)
             c.blit(self.tmp, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
+        self._text(self.osd_slots[0], s)
         if s["tint_amount"] > 0:
             t, k = s["tint"], s["tint_amount"]
             self.gray.fill(tuple(int(255 * (1 - k + k * t[i])) for i in range(3)))
             c.blit(self.gray, (0, 0), special_flags=pygame.BLEND_RGB_MULT)
         if s["strobe"] > 0:
             c.fill(tuple(int(255 * v) for v in s["strobe_color"]))
-        img = self.osd.get(s)
-        if img is not None:
-            if self.osd_serial != self.osd.serial:
-                h, w = img.shape[:2]
-                surf = pygame.image.frombuffer(img.tobytes(), (w, h), "RGBA")
-                self.osd_surf = pygame.transform.scale(surf, self.size)  # sin suavizar: pixeles VHS
-                self.osd_serial = self.osd.serial
-            c.blit(self.osd_surf, (0, 0))
+        self._text(self.osd_slots[1], s)
         if s["master"] < 0.998:
             self._mul(c, s["master"])
         pygame.display.flip()
+
+    def _text(self, sl, s):
+        img = sl["cache"].get(s)
+        if img is None:
+            return
+        if sl["serial"] != sl["cache"].serial:
+            h, w = img.shape[:2]
+            surf = pygame.image.frombuffer(img.tobytes(), (w, h), "RGBA")
+            sl["surf"] = pygame.transform.scale(surf, self.size)  # sin suavizar: pixeles VHS
+            sl["serial"] = sl["cache"].serial
+        self.screen.blit(sl["surf"], (0, 0))
 
     def _mul(self, surf, k):
         v = int(255 * k)

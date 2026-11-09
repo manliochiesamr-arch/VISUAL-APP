@@ -172,10 +172,16 @@ function textPreview(el, t, big) {
   el.style.color = rgbCss(t.color);
   el.style.fontSize = (big === 'lib' ? [4, 5, 6, 7] : big ? [10, 16, 22, 30] : [6, 8, 11, 14])[t.size - 1] + 'px';
 }
+function liveClip() { return state ? state.decks[state.live].clip : null; }
+function textOn(c) {
+  if (!state) return false;
+  return (state.texts || []).includes(c.id) || (!!c.text.link && c.text.link === liveClip());
+}
 function renderTextTile(d, c) {
-  const on = !!(state && state.texts && state.texts.includes(c.id));
+  const on = textOn(c);
   d.classList.add('textclip'); d.classList.toggle('live', on);
-  d.innerHTML = '<div></div>' + (on ? '<b class="tag">ON</b>' : '') + `<span>${esc(c.name)}</span><button class="tedit">✎</button>`;
+  d.innerHTML = '<div></div>' + (on ? '<b class="tag">ON</b>' : '') +
+    `<span>${c.text.link ? '🔗 ' : ''}${c.text.fx ? 'FX · ' : ''}${esc(c.name)}</span><button class="tedit">✎</button>`;
   textPreview(d.firstChild, c.text, false);
   d.onclick = () => send('text_toggle', { clip: c.id });
   d.querySelector('.tedit').onclick = (e) => { e.stopPropagation(); openText(c.id); };
@@ -202,6 +208,16 @@ $$('#t-size button').forEach((b) => b.onclick = () => tsend({ size: parseInt(b.d
 $('#t-blink').onclick = () => { const c = textClip(); if (c) tsend({ blink: !c.text.blink }); };
 $('#t-on').onclick = () => { if (editText) send('text_toggle', { clip: editText }); };
 $('#t-alloff').onclick = () => send('texts_off');
+$('#t-fx').onclick = () => { const c = textClip(); if (c) tsend({ fx: !c.text.fx }); };
+$('#t-link').onchange = (e) => tsend({ link: e.target.value || null });
+// clips a los que se puede vincular un texto: primero los del show activo
+function linkOptions() {
+  const ok = clips.filter((c) => c.kind !== 'text' && c.status === 'ready');
+  const show = activeShow();
+  if (!show) return ok;
+  return [...show.clips.map((id) => ok.find((c) => c.id === id)).filter(Boolean),
+          ...ok.filter((c) => !show.clips.includes(c.id))];
+}
 $('#t-ren').onclick = async () => {
   const c = textClip(); if (!c) return;
   const n = await askText('Nombre del texto', c.name);
@@ -399,8 +415,14 @@ function renderTextPanel() {
   $('#pv-empty').style.display = c ? 'none' : '';
   $('#preview').style.background = '#000';
   if (!c) { $('#clip-name').textContent = 'No hay texto elegido'; pt.textContent = ''; return; }
-  const on = !!(state.texts && state.texts.includes(c.id));
-  $('#clip-name').textContent = `TEXTO · ${c.name}`;
+  const on = (state.texts || []).includes(c.id);
+  $('#clip-name').textContent = `TEXTO · ${c.name}` + (textOn(c) && !on ? ' (sale con su clip)' : '');
+  $('#t-fx').classList.toggle('on', !!c.text.fx);
+  const sel = $('#t-link'), opts = linkOptions();
+  const html = '<option value="">— nadie (solo a mano) —</option>' +
+    opts.map((x) => `<option value="${x.id}">${esc(x.name)}</option>`).join('');
+  if (sel.dataset.h !== html) { sel.innerHTML = html; sel.dataset.h = html; }
+  sel.value = c.text.link || '';
   const ti = $('#t-text');
   if (document.activeElement !== ti && ti.value !== c.text.text) ti.value = c.text.text;
   segOn('#t-pos', c.text.pos); segOn('#t-size', String(c.text.size));
@@ -448,6 +470,9 @@ function renderClipPanel() {
   if (isSolid) $$('#tab-clip .solidonly').forEach((el) => { el.hidden = false; });
   if (isGen || isSolid) setFader('f-chue', fx.hue || 0);
   if (isGen) setFader('f-cdetail', fx.detail ?? 0.5);
+  setFader('f-cg-rgb', fx.g_rgb || 0); setFader('f-cg-trk', fx.g_trk || 0);
+  setFader('f-cg-hue', fx.g_hue || 0); setFader('f-cg-sat', fx.g_sat ?? 1);
+  $('#v-cg-sat').textContent = Math.round((fx.g_sat ?? 1) * 100) + '%';
   if (isSolid) {
     setFader('f-csat', fx.sat ?? 1); setFader('f-cbright', fx.bright ?? 1);
     $('#preview').style.background = solidCss(fx);

@@ -91,8 +91,11 @@ def main():
         dt, last = now - last, now
         s = mixer.tick()
         generators.set_audio(s["audio"])
-        if s["texts"]:  # recursos de texto prendidos: van encima, despues del texto en vivo
-            s["osd"] = s["osd"] + library.text_layers(s["texts"], s["beats"])
+        # recursos de texto: los prendidos a mano + los vinculados al clip que esta al aire
+        live_clip = s["decks"]["A" if s["xfade"] < 0.5 else "B"]["clip"]
+        texts = s["texts"] + [t for t in library.linked_texts(live_clip) if t not in s["texts"]]
+        if texts:  # van despues del texto en vivo
+            s["osd"] = s["osd"] + library.text_layers(texts, s["beats"])
         for k, d in decks.items():
             clip = s["decks"][k]["clip"]
             d.load(library.path_of(clip) if clip else None)

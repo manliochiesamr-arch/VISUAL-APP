@@ -22,7 +22,9 @@ TEXT_POS = ("tl", "t", "tr", "l", "c", "r", "bl", "b", "br")
 
 def clean_text(d):
     """Ajustes validados de un recurso de texto."""
-    out = {"text": "", "pos": "c", "size": 3, "blink": False, "color": [1.0, 1.0, 1.0]}
+    out = {"text": "", "pos": "c", "size": 3, "blink": False, "color": [1.0, 1.0, 1.0],
+           "fx": False,   # True = recibe los efectos en vivo (zoom, terremoto, glitch, tinte...)
+           "link": None}  # id de un clip: el texto sale solo cuando ese clip esta al aire
     d = d or {}
     out["text"] = str(d.get("text", ""))[:300]
     if d.get("pos") in TEXT_POS:
@@ -33,6 +35,8 @@ def clean_text(d):
     except (TypeError, ValueError):
         pass
     out["blink"] = bool(d.get("blink", False))
+    out["fx"] = bool(d.get("fx", False))
+    out["link"] = str(d["link"])[:40] if d.get("link") else None
     col = d.get("color")
     if isinstance(col, (list, tuple)) and len(col) == 3:
         try:
@@ -189,6 +193,9 @@ class Library:
             if self.clips.get(cid, {}).get("kind") == "gen":
                 return False  # los generadores no se borran (se sacan del show)
             c = self.clips.pop(cid, None)
+            for t in self.clips.values():  # textos vinculados a este clip quedan sueltos
+                if t.get("kind") == "text" and t["text"].get("link") == cid:
+                    t["text"]["link"] = None
         if not c:
             return False
         if c.get("file"):
@@ -234,6 +241,14 @@ class Library:
         self._save_later()
         return True
 
+    def linked_texts(self, clip_id):
+        """Textos vinculados a un clip (salen solos cuando ese clip esta al aire)."""
+        if not clip_id:
+            return []
+        with self.lock:
+            return [c["id"] for c in self.clips.values()
+                    if c.get("kind") == "text" and c["text"].get("link") == clip_id]
+
     def text_layers(self, ids, beats):
         """Capas para el render de los textos prendidos (mismo formato que el texto en vivo)."""
         out = []
@@ -245,7 +260,7 @@ class Library:
                 t = c["text"]
                 on = bool(t["text"].strip()) and (not t["blink"] or (beats % 1.0) < 0.6)
                 out.append({"text": t["text"], "pos": t["pos"], "size": t["size"], "on": on,
-                            "color": tuple(t["color"])})
+                            "color": tuple(t["color"]), "fx": t.get("fx", False)})
         return out
 
     def _save_later(self):

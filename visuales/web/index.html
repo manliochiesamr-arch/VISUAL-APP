@@ -80,6 +80,11 @@
     <div class="row solidonly"><span class="lbl w">Saturación</span><div class="fader" id="f-csat" data-clip="sat"></div></div>
     <div class="row solidonly"><span class="lbl w">Brillo</span><div class="fader" id="f-cbright" data-clip="bright"></div></div>
     <div class="row genonly"><span class="lbl w">Detalle</span><div class="fader" id="f-cdetail" data-clip="detail"></div></div>
+    <h3 class="sub">Glitch del clip</h3>
+    <div class="row"><span class="lbl w">RGB</span><div class="fader" id="f-cg-rgb" data-clip="g_rgb"></div></div>
+    <div class="row"><span class="lbl w">Tracking</span><div class="fader" id="f-cg-trk" data-clip="g_trk"></div></div>
+    <div class="row vid"><span class="lbl w">Tono</span><div class="fader hue" id="f-cg-hue" data-clip="g_hue"></div></div>
+    <div class="row vid"><span class="lbl w">Saturación <i id="v-cg-sat">100%</i></span><div class="fader" id="f-cg-sat" data-clip="g_sat" data-max="2"></div></div>
     <div class="row">
       <button class="small wide vid" id="c-speed1">Velocidad 1x</button>
       <button class="small wide vid" id="c-center">Centrar</button>
@@ -108,8 +113,10 @@
         <button id="t-on" class="toggle wide">Al aire</button>
         <button id="t-blink" class="toggle wide">Parpadeo (beat)</button>
       </div>
+      <div class="row"><button id="t-fx" class="toggle wide">Recibe FX en vivo (zoom, terremoto, glitch, tinte)</button></div>
+      <div class="row"><span class="lbl w">Sale con</span><select id="t-link" class="wide"></select></div>
       <div class="row"><button class="small wide" id="t-ren">✎ Nombre</button><button class="small wide" id="t-alloff">Apagar todos los textos</button></div>
-      <p class="hint">Queda guardado en el recurso. En la grilla del show, tocar un texto lo prende o lo apaga encima de lo que esté al aire (podés tener varios a la vez). El ✎ de la miniatura lo abre acá.</p>
+      <p class="hint">Queda guardado en el recurso. En la grilla del show, tocar un texto lo prende o lo apaga encima de lo que esté al aire (podés tener varios a la vez). El ✎ de la miniatura lo abre acá. Con "Sale con" el texto aparece solo cada vez que ese clip está al aire. Sin "Recibe FX" queda limpio encima de todo.</p>
     </div>
   </section>
 

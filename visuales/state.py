@@ -10,7 +10,8 @@ ZOOM_MODES = ("fixed", "pulse", "in", "out")
 FITS = ("fit", "fill", "stretch")
 DEFAULT_FX = {"fit": "fit", "zoom": 1.0, "panx": 0.0, "pany": 0.0, "speed": 1.0,
               "hue": 0.0, "detail": 0.5,   # hue/detail: generadores (hue tambien color del solido)
-              "sat": 1.0, "bright": 1.0}   # solo para los solidos de color
+              "sat": 1.0, "bright": 1.0,   # solo para los solidos de color
+              "g_rgb": 0.0, "g_trk": 0.0, "g_hue": 0.0, "g_sat": 1.0}  # glitch propio del clip
 
 
 OSD_POS = ("tl", "t", "tr", "l", "c", "r", "bl", "b", "br")
@@ -27,7 +28,8 @@ def clean_fx(fx):
     if fx.get("fit") in FITS:
         out["fit"] = fx["fit"]
     for k, lo, hi in (("zoom", 0.25, 4.0), ("panx", -1.0, 1.0), ("pany", -1.0, 1.0), ("speed", 0.0, 4.0),
-                      ("hue", 0.0, 1.0), ("detail", 0.0, 1.0), ("sat", 0.0, 1.0), ("bright", 0.0, 1.0)):
+                      ("hue", 0.0, 1.0), ("detail", 0.0, 1.0), ("sat", 0.0, 1.0), ("bright", 0.0, 1.0),
+                      ("g_rgb", 0.0, 1.0), ("g_trk", 0.0, 1.0), ("g_hue", 0.0, 1.0), ("g_sat", 0.0, 2.0)):
         if k in fx:
             try:
                 out[k] = max(lo, min(hi, float(fx[k])))
