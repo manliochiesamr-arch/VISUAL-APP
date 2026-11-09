@@ -12,6 +12,13 @@ DEFAULT_FX = {"fit": "fit", "zoom": 1.0, "panx": 0.0, "pany": 0.0, "speed": 1.0,
               "hue": 0.0, "detail": 0.5}  # hue/detail: solo para los generadores
 
 
+OSD_POS = ("tl", "t", "tr", "l", "c", "r", "bl", "b", "br")
+
+
+def new_layer(pos="tl"):
+    return {"text": "", "on": False, "pos": pos, "size": 2, "blink": False}
+
+
 def clean_fx(fx):
     """Ajustes por clip validados (lo que queda guardado con cada video)."""
     out = dict(DEFAULT_FX)
@@ -87,7 +94,9 @@ class Mixer:
         self.quake = False
         self.quake_amount = 0.5
         # texto en pantalla estilo VHS
-        self.osd = {"text": "", "on": False, "pos": "tl", "size": 2, "blink": False}
+        self.osd = [new_layer(p) for p in ("tl", "tr", "c", "bl")]  # 4 capas de texto
+        # glitch en vivo (sobre todo lo que esta al aire) y color global
+        self.glitch = {"rgb": 0.0, "tracking": 0.0, "hue": 0.0, "sat": 1.0}
         self.beat = BeatClock()
         self._last = time.monotonic()
 
@@ -172,13 +181,22 @@ class Mixer:
                     self.quake = bool(data["on"])
                 if "amount" in data:
                     self.quake_amount = _clamp(data["amount"])
+            elif cmd == "glitch":
+                for k, hi in (("rgb", 1.0), ("tracking", 1.0), ("hue", 1.0), ("sat", 2.0)):
+                    if k in data:
+                        self.glitch[k] = max(0.0, min(hi, float(data[k])))
+                if data.get("reset"):
+                    self.glitch = {"rgb": 0.0, "tracking": 0.0, "hue": 0.0, "sat": 1.0}
             elif cmd == "osd":
-                o = self.osd
+                try:
+                    o = self.osd[int(data.get("layer", 0))]
+                except (ValueError, IndexError):
+                    return False
                 if "text" in data:
                     o["text"] = str(data["text"])[:200]
                 if "on" in data:
                     o["on"] = bool(data["on"])
-                if data.get("pos") in ("tl", "tr", "c", "bl", "br"):
+                if data.get("pos") in OSD_POS:
                     o["pos"] = data["pos"]
                 if "size" in data and int(data["size"]) in (1, 2, 3, 4):
                     o["size"] = int(data["size"])
@@ -273,8 +291,9 @@ class Mixer:
                 "tint_amount": self.tint_amount,
                 "strobe": strobe,
                 "strobe_color": scol,
-                "osd": dict(self.osd, on=self.osd["on"] and bool(self.osd["text"].strip()) and
-                            (not self.osd["blink"] or (beats % 1.0) < 0.6)),
+                "glitch": dict(self.glitch, time=now % 1000.0),
+                "osd": [dict(o, on=o["on"] and bool(o["text"].strip()) and (not o["blink"] or (beats % 1.0) < 0.6))
+                        for o in self.osd],
             }
 
     def live_settings(self):
@@ -285,7 +304,8 @@ class Mixer:
                     "strobe_color": self.strobe_color, "fade_time": self.fade_time,
                     "blackout_time": self.blackout_time, "zoom_cycle": self.zoom_cycle,
                     "quake_amount": self.quake_amount, "master": self.master,
-                    "osd": {k: self.osd[k] for k in ("text", "pos", "size", "blink")}}
+                    "osd": [{k: o[k] for k in ("text", "pos", "size", "blink")} for o in self.osd],
+                    "glitch": dict(self.glitch)}
 
     def load_live(self, d):
         """Carga los ajustes en vivo de un show (los efectos activos se apagan)."""
@@ -312,12 +332,22 @@ class Mixer:
                     self.fade_time = max(0.0, min(30.0, float(d["fade_time"])))
                 if "blackout_time" in d:
                     self.blackout_time = max(0.0, min(10.0, float(d["blackout_time"])))
-                if isinstance(d.get("osd"), dict):
-                    o = d["osd"]
-                    self.osd.update(text=str(o.get("text", ""))[:200], on=False,
-                                    pos=o.get("pos", "tl") if o.get("pos") in ("tl", "tr", "c", "bl", "br") else "tl",
-                                    size=int(o.get("size", 2)) if int(o.get("size", 2)) in (1, 2, 3, 4) else 2,
-                                    blink=bool(o.get("blink", False)))
+                if isinstance(d.get("glitch"), dict):
+                    for k, hi in (("rgb", 1.0), ("tracking", 1.0), ("hue", 1.0), ("sat", 2.0)):
+                        if k in d["glitch"]:
+                            self.glitch[k] = max(0.0, min(hi, float(d["glitch"][k])))
+                saved = d.get("osd")
+                if isinstance(saved, dict):  # shows guardados con la version de una sola capa
+                    saved = [saved]
+                if isinstance(saved, list):
+                    for i, o in enumerate(saved[:len(self.osd)]):
+                        if not isinstance(o, dict):
+                            continue
+                        size = int(o.get("size", 2))
+                        self.osd[i].update(text=str(o.get("text", ""))[:200], on=False,
+                                           pos=o.get("pos") if o.get("pos") in OSD_POS else self.osd[i]["pos"],
+                                           size=size if size in (1, 2, 3, 4) else 2,
+                                           blink=bool(o.get("blink", False)))
             except (TypeError, ValueError):
                 pass
             self.strobe = False
@@ -348,7 +378,8 @@ class Mixer:
                 "zoom_cycle": self.zoom_cycle,
                 "quake": self.quake,
                 "quake_amount": self.quake_amount,
-                "osd": dict(self.osd),
+                "osd": [dict(o) for o in self.osd],
+                "glitch": dict(self.glitch),
                 "bpm": round(self.beat.bpm, 1),
                 "beat": int(self.beat.beats()),
             }

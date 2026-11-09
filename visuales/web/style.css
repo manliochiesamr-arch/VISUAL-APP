@@ -112,3 +112,8 @@ h3:first-child { margin-top: 4px; }
 #osd-text { width: 100%; font: inherit; font-size: 17px; color: var(--txt); background: var(--bg);
   border: 1px solid var(--line); border-radius: 10px; padding: 10px; -webkit-user-select: text; user-select: text; }
 .osd-quick { flex-wrap: wrap; gap: 6px; }
+.posgrid { display: grid; grid-template-columns: repeat(3, 44px); gap: 4px; }
+.posgrid button { height: 36px; padding: 0; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--txt); font: inherit; }
+.posgrid button.on { background: var(--txt); color: var(--bg); }
+#osd-layer button.lit::after { content: ''; display: inline-block; width: 6px; height: 6px; margin-left: 5px;
+  border-radius: 50%; background: var(--acc); vertical-align: middle; }

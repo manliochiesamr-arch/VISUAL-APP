@@ -102,21 +102,35 @@ def canvas_size(screen_aspect):
     return (320, 240) if screen_aspect < 1.5 else (384, 216)
 
 
-def render(text, pos="tl", size=2, screen_aspect=4 / 3, color=(1.0, 1.0, 1.0)):
-    """Lienzo RGBA float32 (alto, ancho, 4) con el texto. None si no hay texto."""
+def render_layers(layers, screen_aspect=4 / 3):
+    """Varias capas [(texto, lugar, tamano)] en un solo lienzo. None si no hay nada que mostrar."""
+    img = None
+    for text, pos, size in layers:
+        img = render(text, pos, size, screen_aspect, img=img) if text else img
+    return img
+
+
+def render(text, pos="tl", size=2, screen_aspect=4 / 3, color=(1.0, 1.0, 1.0), img=None):
+    """Lienzo RGBA float32 (alto, ancho, 4) con el texto. None si no hay texto.
+    Con img se dibuja encima de un lienzo existente (capas)."""
     text = normalize(expand(text or "")).strip("\n")
     if not text.strip():
-        return None
+        return img
     W, H = canvas_size(screen_aspect)
-    img = np.zeros((H, W, 4), np.float32)
+    if img is None:
+        img = np.zeros((H, W, 4), np.float32)
     lines = text.split("\n")
     s = max(1, min(4, int(size)))
     cw, ch, gap = 6 * s, 9 * s, s            # ancho de letra con espacio, alto de linea
     tw = max(len(l) for l in lines) * cw - s
     th = len(lines) * ch - 2 * s
     m = 12
-    x0 = {"tl": m, "bl": m, "c": (W - tw) // 2, "tr": W - m - tw, "br": W - m - tw}.get(pos, m)
-    y0 = {"tl": m, "tr": m, "c": (H - th) // 2, "bl": H - m - th, "br": H - m - th}.get(pos, m)
+    col = {"l": m, "c": (W - tw) // 2, "r": W - m - tw}
+    row = {"t": m, "c": (H - th) // 2, "b": H - m - th}
+    # pos: tl t tr / l c r / bl b br
+    p = {"t": "tc", "b": "bc", "l": "cl", "r": "cr", "c": "cc"}.get(pos, pos)
+    y0 = row.get(p[0], m)
+    x0 = col.get(p[1], m)
     rgb = np.array(color, np.float32)
     for li, line in enumerate(lines):
         for ci, chr_ in enumerate(line):

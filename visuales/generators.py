@@ -227,26 +227,32 @@ def set_audio(bands):
 
 def linea_audio(t, beats, hue, detail):
     """Linea blanca horizontal que se deforma con las frecuencias del mic:
-    graves en el centro, agudos hacia los bordes (espejado)."""
+    graves en el centro, agudos hacia los bordes (espejado). Detalle = cantidad de ondas."""
     global _level
     a = _audio if _audio.size else np.zeros(32, np.float32)
     n = a.size
     pos = np.abs(np.linspace(-1, 1, W)) * (n - 1)               # centro = graves
-    spec = np.interp(pos, np.arange(n), a)
-    wob = np.sin(np.linspace(0, 1, W) * (20 + 40 * detail) + t * 9)   # oscila como una onda
-    target = spec * wob * (0.4 + 0.9 * detail) * (H * 0.45)
-    _level = np.where(np.abs(target) > np.abs(_level), target, _level * 0.82)  # sube rapido, baja suave
-    _level = np.clip(_level, -H * 0.47, H * 0.47)
-    yline = H / 2 + _level + np.sin(_x[0] * 0.3 + t * 30) * 0.3
+    spec = np.interp(pos, np.arange(n), a).astype(np.float32)
+    spec = np.convolve(spec, _SMOOTH, mode="same")              # sin escalones entre bandas
+    spec = np.where(spec > 0.06, spec, 0.0)                     # puerta de ruido: en silencio, linea quieta
+    # envolvente: sube enseguida y baja suave (no tiembla)
+    _level = np.where(spec > _level, _level + (spec - _level) * 0.7, _level * 0.86)
+    cycles = 3 + detail * 12
+    carrier = np.sin(np.linspace(-1, 1, W) * math.pi * cycles + t * 2.5)
+    yline = H / 2 + _level * carrier * (H * 0.44)
     # cada columna cubre el tramo hasta sus vecinas: la linea queda continua aunque sea empinada
-    lo = np.minimum(yline, np.minimum(np.roll(yline, 1), np.roll(yline, -1)) * 0.5 + yline * 0.5)
-    hi = np.maximum(yline, np.maximum(np.roll(yline, 1), np.roll(yline, -1)) * 0.5 + yline * 0.5)
+    lo = np.minimum(yline, (np.minimum(np.roll(yline, 1), np.roll(yline, -1)) + yline) * 0.5)
+    hi = np.maximum(yline, (np.maximum(np.roll(yline, 1), np.roll(yline, -1)) + yline) * 0.5)
     d = np.maximum(0, np.maximum(lo[None, :] - _y, _y - hi[None, :]))
-    core = np.clip(1.6 - d, 0, 1)                                # linea de ~2 px
-    glow = np.exp(-d / 3.0) * (0.25 + 0.5 * float(a.mean()) if a.size else 0.25)
+    core = np.clip(1.8 - d, 0, 1)                                # linea de ~2 px
+    glow = np.exp(-d / 2.5) * (0.15 + 0.6 * float(_level.max()))
     v = np.clip(core + glow, 0, 1)
     col = np.ones(3, np.float32) if hue < 0.001 else palette(np.zeros(1, np.float32), hue)[0]
     return v[..., None] * col
+
+
+_SMOOTH = np.exp(-np.linspace(-2, 2, 15) ** 2).astype(np.float32)
+_SMOOTH /= _SMOOTH.sum()
 
 
 GENERATORS = {

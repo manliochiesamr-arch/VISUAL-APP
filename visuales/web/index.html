@@ -122,7 +122,16 @@
     <p class="hint">Destellos por beat. Mantener STROBE apretado = strobe momentáneo.</p>
 
 
+    <h3>Glitch y color</h3>
+    <div class="row"><span class="lbl w">RGB</span><div class="fader" id="f-g-rgb" data-cmd="glitch" data-key="rgb"></div></div>
+    <div class="row"><span class="lbl w">Tracking</span><div class="fader" id="f-g-tracking" data-cmd="glitch" data-key="tracking"></div></div>
+    <div class="row"><span class="lbl w">Color</span><div class="fader hue" id="f-g-hue" data-cmd="glitch" data-key="hue"></div></div>
+    <div class="row"><span class="lbl w">Saturación <i id="v-g-sat">100%</i></span><div class="fader" id="f-g-sat" data-cmd="glitch" data-key="sat" data-max="2"></div></div>
+    <div class="row"><button class="small wide" id="g-reset">Sin glitch / color normal</button></div>
+
     <h3>Texto VHS</h3>
+    <div class="row"><span class="lbl w">Capa</span>
+      <div class="seg" id="osd-layer"><button data-v="0">1</button><button data-v="1">2</button><button data-v="2">3</button><button data-v="3">4</button></div></div>
     <div class="row"><input type="text" id="osd-text" maxlength="200" placeholder="Escribí el texto… (ej: PLAY ▶)"></div>
     <div class="row osd-quick">
       <button class="small" data-t="PLAY ▶">PLAY ▶</button><button class="small" data-t="● REC">● REC</button>
@@ -130,11 +139,15 @@
       <button class="small" data-t="{hora}">Hora</button><button class="small" data-t="{fecha}">Fecha</button>
     </div>
     <div class="row"><span class="lbl w">Lugar</span>
-      <div class="seg" id="osd-pos"><button data-v="tl">↖</button><button data-v="tr">↗</button><button data-v="c">●</button><button data-v="bl">↙</button><button data-v="br">↘</button></div></div>
+      <div class="posgrid" id="osd-pos">
+        <button data-v="tl">↖</button><button data-v="t">↑</button><button data-v="tr">↗</button>
+        <button data-v="l">←</button><button data-v="c">●</button><button data-v="r">→</button>
+        <button data-v="bl">↙</button><button data-v="b">↓</button><button data-v="br">↘</button>
+      </div></div>
     <div class="row"><span class="lbl w">Tamaño</span>
       <div class="seg" id="osd-size"><button data-v="1">S</button><button data-v="2">M</button><button data-v="3">L</button><button data-v="4">XL</button></div></div>
     <div class="row">
-      <button id="osd-on" class="toggle wide">Mostrar texto</button>
+      <button id="osd-on" class="toggle wide">Mostrar capa</button>
       <button id="osd-blink" class="toggle wide">Parpadeo (beat)</button>
     </div>
 

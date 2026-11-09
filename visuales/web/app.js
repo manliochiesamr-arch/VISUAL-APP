@@ -80,11 +80,19 @@ function onState(s) {
     el.querySelector('.dname').textContent = c ? c.name : '—';
   }
   $('#strobe').classList.toggle('on', s.strobe);
-  if (s.osd) {
+  if (s.glitch) {
+    setFader('f-g-rgb', s.glitch.rgb); setFader('f-g-tracking', s.glitch.tracking);
+    setFader('f-g-hue', s.glitch.hue); setFader('f-g-sat', s.glitch.sat);
+    $('#v-g-sat').textContent = Math.round(s.glitch.sat * 100) + '%';
+  }
+  if (Array.isArray(s.osd)) {
+    const o = s.osd[osdLayer] || s.osd[0];
     const ti = $('#osd-text');
-    if (document.activeElement !== ti && ti.value !== s.osd.text) ti.value = s.osd.text;
-    $('#osd-on').classList.toggle('on', s.osd.on); $('#osd-blink').classList.toggle('on', s.osd.blink);
-    segOn('#osd-pos', s.osd.pos); segOn('#osd-size', String(s.osd.size));
+    if (document.activeElement !== ti && ti.value !== o.text) ti.value = o.text;
+    $('#osd-on').classList.toggle('on', o.on); $('#osd-blink').classList.toggle('on', o.blink);
+    segOn('#osd-pos', o.pos); segOn('#osd-size', String(o.size)); segOn('#osd-layer', String(osdLayer));
+    // punto en las capas que estan prendidas
+    $$('#osd-layer button').forEach((b, i) => b.classList.toggle('lit', !!(s.osd[i] && s.osd[i].on)));
   }
   $('#quake').classList.toggle('on', s.quake);
   setFader('f-quake', s.quake_amount);
@@ -361,20 +369,28 @@ for (const c of COLORS) {
 }
 
 // ---------------- texto VHS ----------------
-let osdTimer = null;
+$('#g-reset').onclick = () => send('glitch', { reset: true });
+let osdTimer = null, osdLayer = 0;
+const osd = (data) => send('osd', { layer: osdLayer, ...data });
+$$('#osd-layer button').forEach((b) => b.onclick = () => {
+  osdLayer = parseInt(b.dataset.v, 10);
+  $('#osd-text').value = (state && state.osd[osdLayer].text) || '';
+  if (state) onState(state);
+});
 $('#osd-text').oninput = (e) => {
   clearTimeout(osdTimer);
-  osdTimer = setTimeout(() => send('osd', { text: e.target.value }), 250);
+  osdTimer = setTimeout(() => osd({ text: e.target.value }), 250);
 };
 $$('.osd-quick button').forEach((b) => b.onclick = () => {
   const ti = $('#osd-text');
   ti.value = (ti.value ? ti.value + ' ' : '') + b.dataset.t;
-  send('osd', { text: ti.value, on: true });
+  osd({ text: ti.value, on: true });
 });
-$$('#osd-pos button').forEach((b) => b.onclick = () => send('osd', { pos: b.dataset.v }));
-$$('#osd-size button').forEach((b) => b.onclick = () => send('osd', { size: parseInt(b.dataset.v, 10) }));
-$('#osd-on').onclick = () => send('osd', { on: !(state && state.osd && state.osd.on), text: $('#osd-text').value });
-$('#osd-blink').onclick = () => send('osd', { blink: !(state && state.osd && state.osd.blink) });
+$$('#osd-pos button').forEach((b) => b.onclick = () => osd({ pos: b.dataset.v }));
+$$('#osd-size button').forEach((b) => b.onclick = () => osd({ size: parseInt(b.dataset.v, 10) }));
+const curLayer = () => (state && state.osd && state.osd[osdLayer]) || {};
+$('#osd-on').onclick = () => osd({ on: !curLayer().on, text: $('#osd-text').value });
+$('#osd-blink').onclick = () => osd({ blink: !curLayer().blink });
 
 // ---------------- BPM por microfono (experimental) ----------------
 // 32 bandas logaritmicas de 40 Hz a 10 kHz, 0..255

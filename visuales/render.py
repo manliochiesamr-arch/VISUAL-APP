@@ -42,6 +42,11 @@ uniform vec3 tint;
 uniform float tintAmount;
 uniform float strobe;
 uniform vec3 strobeColor;
+uniform float rgbSplit;  // glitch: desfasaje de canales 0..1
+uniform float tracking;  // glitch: filas corridas + banda de tracking 0..1
+uniform float hueShift;  // rotacion de color 0..1 (vuelta completa)
+uniform float saturation; // 0 = blanco y negro, 1 = normal, 2 = saturado
+uniform float time;
 uniform sampler2D texT;  // texto VHS (RGBA)
 uniform float hasT;
 
@@ -57,11 +62,50 @@ vec3 sampleDeck(sampler2D tex, vec2 fit, vec3 clip, vec2 p) {
     return texture(tex, tc).rgb;
 }
 
-void main() {
-    vec2 p = (uv - 0.5) / zoom + offset;
+vec3 scene(vec2 p) {
     vec3 a = hasA > 0.5 ? sampleDeck(texA, fitA, clipA, p) : vec3(0.0);
     vec3 b = hasB > 0.5 ? sampleDeck(texB, fitB, clipB, p) : vec3(0.0);
-    vec3 c = mix(a, b, xfade);
+    return mix(a, b, xfade);
+}
+
+float hash(vec2 v) {
+    return fract(sin(dot(v, vec2(12.9898, 78.233))) * 43758.5453);
+}
+
+void main() {
+    vec2 p = (uv - 0.5) / zoom + offset;
+    float band = 0.0;
+    if (tracking > 0.001) {
+        float frame = floor(time * 25.0);
+        float row = floor(uv.y * 160.0);
+        float by = fract(time * 0.23);                       // banda de tracking que baja
+        band = smoothstep(0.07, 0.0, abs(uv.y - by));
+        float jit = (hash(vec2(row, frame)) - 0.5) * 0.02;   // temblor fino de cada fila
+        float tear = (hash(vec2(floor(row / 6.0), frame)) - 0.5) * band * 0.25;
+        p.x += tracking * (jit + tear + 0.01 * sin(uv.y * 40.0 + time * 7.0));
+    }
+    vec3 c;
+    if (rgbSplit > 0.001) {
+        float dx = rgbSplit * 0.035;
+        c = vec3(scene(p + vec2(dx, 0.0)).r, scene(p).g, scene(p - vec2(dx, 0.0)).b);
+    } else {
+        c = scene(p);
+    }
+    if (tracking > 0.001) {
+        float n = hash(uv * 400.0 + time);
+        c = mix(c, vec3(n), band * tracking * 0.6);
+    }
+    if (hueShift > 0.001) {                                  // rotacion de tono (YIQ)
+        float yy = dot(c, vec3(0.299, 0.587, 0.114));
+        float ii = dot(c, vec3(0.596, -0.274, -0.322));
+        float qq = dot(c, vec3(0.211, -0.523, 0.312));
+        float ang = hueShift * 6.2831853;
+        float ca = cos(ang), sa = sin(ang);
+        float i2 = ii * ca - qq * sa, q2 = ii * sa + qq * ca;
+        c = vec3(yy + 0.956 * i2 + 0.621 * q2, yy - 0.272 * i2 - 0.647 * q2, yy - 1.106 * i2 + 1.703 * q2);
+    }
+    float luma = dot(c, vec3(0.299, 0.587, 0.114));
+    c = clamp(mix(vec3(luma), c, saturation), 0.0, 1.0);
     c = mix(c, c * tint, tintAmount);
     c = mix(c, strobeColor, strobe);
     if (hasT > 0.5) {
@@ -73,6 +117,11 @@ void main() {
 """
 
 
+# uniform del shader, clave en s["glitch"], valor por defecto
+GLITCH_UNIFORMS = (("rgbSplit", "rgb", 0.0), ("tracking", "tracking", 0.0), ("hueShift", "hue", 0.0),
+                   ("saturation", "sat", 1.0), ("time", "time", 0.0))
+
+
 class OsdCache:
     """Lienzo RGBA del texto VHS; solo se rehace cuando cambia el texto, el lugar o el minuto."""
 
@@ -81,14 +130,15 @@ class OsdCache:
         self.serial = 0
 
     def get(self, s):
-        o = s.get("osd") or {}
-        if not o.get("on"):
+        layers = [o for o in (s.get("osd") or []) if o.get("on")]
+        if not layers:
             return None
         from . import osd
-        key = (osd.expand(o.get("text", "")), o.get("pos"), o.get("size"), round(s["screen_aspect"], 2))
+        key = (tuple((osd.expand(o.get("text", "")), o.get("pos"), o.get("size")) for o in layers),
+               round(s["screen_aspect"], 2))
         if key != self.key:
             self.key = key
-            img = osd.render(key[0], key[1], key[2], s["screen_aspect"])
+            img = osd.render_layers(key[0], s["screen_aspect"])
             self.img = None if img is None else (img * 255).astype("uint8")
             self.serial += 1
         return self.img
@@ -180,6 +230,10 @@ class GLRenderer:
         p["tintAmount"].value = s["tint_amount"]
         p["strobe"].value = s["strobe"]
         p["strobeColor"].value = s["strobe_color"]
+        g = s.get("glitch") or {}
+        for name, key, dflt in GLITCH_UNIFORMS:
+            if name in p:  # el compilador quita los uniforms que no se usan
+                p[name].value = float(g.get(key, dflt))
         img = self.osd.get(s)
         if img is not None:
             h, w = img.shape[:2]
@@ -247,7 +301,8 @@ class GL2Renderer:
         GL.glPixelStorei(GL.GL_UNPACK_ALIGNMENT, 1)
         self.u = {n: GL.glGetUniformLocation(self.prog, n) for n in (
             "texA", "texB", "hasA", "hasB", "fitA", "fitB", "clipA", "clipB", "zoom", "offset", "droste",
-            "xfade", "master", "tint", "tintAmount", "strobe", "strobeColor", "texT", "hasT")}
+            "xfade", "master", "tint", "tintAmount", "strobe", "strobeColor", "texT", "hasT",
+            *[n for n, _, _ in GLITCH_UNIFORMS])}
         GL.glUniform1i(self.u["texA"], 0)
         GL.glUniform1i(self.u["texB"], 1)
         GL.glUniform1i(self.u["texT"], 2)
@@ -311,6 +366,9 @@ class GL2Renderer:
         GL.glUniform1f(u["tintAmount"], s["tint_amount"])
         GL.glUniform1f(u["strobe"], s["strobe"])
         GL.glUniform3f(u["strobeColor"], *s["strobe_color"])
+        g = s.get("glitch") or {}
+        for name, key, dflt in GLITCH_UNIFORMS:
+            GL.glUniform1f(u[name], float(g.get(key, dflt)))
         img = self.osd.get(s)
         if img is not None and self.osd_serial != self.osd.serial:
             GL.glActiveTexture(GL.GL_TEXTURE2)
