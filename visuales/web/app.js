@@ -253,6 +253,38 @@ async function newResource(kind) {
   }
 }
 $('#new-solid').onclick = () => newResource('solid');
+// ---------------- red ----------------
+let red = null;
+async function loadRed() {
+  try { red = await fetch('/api/red').then((r) => r.json()); } catch { return; }
+  segOn('#red-modo', red.modo);
+  if (!red.disponible) { $('#red-estado').textContent = 'Acá no se puede cambiar la red (solo en la Pi).'; return; }
+  $('#red-estado').textContent = red.conexion === 'visuales-ap' ? 'Ahora: red propia VISUALES'
+    : red.conexion ? `Ahora: conectada al wifi "${red.conexion}"` : 'Ahora: sin wifi';
+  $('#red-conocidos').textContent = red.conocidos.length ? 'Wifis conocidos: ' + red.conocidos.join(', ') : 'Sin wifis conocidos guardados.';
+}
+async function setRed(data) {
+  const r = await fetch('/api/red', { method: 'POST', body: JSON.stringify(data) }).then((x) => x.json()).catch(() => null);
+  if (!r || !r.ok) alert((r && r.error) || 'No se pudo guardar');
+  setTimeout(loadRed, 1500);
+}
+$$('#red-modo button').forEach((b) => b.onclick = () => {
+  const m = b.dataset.v;
+  if (!red || m === red.modo) return;
+  const aviso = {
+    visuales: 'La Pi va a dejar el wifi actual y levantar VISUALES. Conectá el teléfono a VISUALES y abrí http://10.42.0.1. Se pierde Connect.',
+    auto: 'Si hay un wifi conocido a la vista, la Pi se pasa a ese wifi (si estás en VISUALES, se corta). Si no, sigue en VISUALES.',
+    wifi: 'La Pi no va a levantar VISUALES nunca. Si no hay wifi conocido quedás sin acceso (salvo rescate por SD).',
+  }[m];
+  if (confirm(aviso + '\n\n¿Seguir?')) setRed({ modo: m });
+});
+$('#red-add').onclick = async () => {
+  const ssid = await askText('Nombre del wifi (tal cual aparece)', '');
+  if (!ssid) return;
+  const clave = await askText('Clave del wifi (vacío si es abierta)', '');
+  setRed({ ssid, clave: clave || '' });
+};
+$('nav button[data-tab=lib]').addEventListener('click', loadRed);
 $('#new-text').onclick = () => newResource('text');
 
 function renderLibrary() {

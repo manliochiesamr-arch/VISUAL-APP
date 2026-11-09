@@ -84,19 +84,21 @@ Espera 1 o 2 minutos. La pantalla queda negra porque la app está esperando vide
 
 Si algo falla, desde la PC ejecuta: `ssh TU_USUARIO@TU_HOST.local` y después `journalctl -u visuales -n 50`, y mándame lo que salga.
 
-## 7. Activar el wifi propio para el show
+## 7. Red: wifi conocido o red propia VISUALES
 
-Cuando todo funcione, crea la red propia de la Pi:
+La red se maneja desde la app, en **Biblioteca > Red**. Hay tres modos:
 
-```
-sudo /opt/visuales/install/setup-ap.sh VISUALES unaclave123
-```
+- **Auto** (el que viene puesto): al prender, la Pi busca un wifi conocido (trabajo, casa) durante un minuto. Si lo encuentra se conecta ahí y anda Connect. Si no encuentra ninguno, como en el auditorio, levanta la red propia **VISUALES**.
+- **Forzar VISUALES**: siempre la red propia. Es para el día del show. Si la forzás desde la app y en 5 minutos ningún teléfono entra a VISUALES, vuelve sola a Auto.
+- **Solo wifi**: nunca levanta VISUALES.
 
-- La conexión SSH **se va a cortar**, es normal: la Pi deja de usar el wifi de casa y arma su propia red.
-- Desde ese momento: conecta el iPhone a la red **VISUALES** y abre **http://10.42.0.1**.
-- Safari puede avisar que esa red "no tiene internet". Elige mantenerte conectado.
-- La Pi 3 tiene una sola antena wifi, así que no puede tener a la vez su red propia y la de tu casa. Para volver a conectarte desde la PC, conecta la PC a la red VISUALES y usa `ssh TU_USUARIO@10.42.0.1`.
-- Para volver al wifi de casa: `sudo nmcli con delete visuales-ap && sudo reboot`.
+Con la red VISUALES: conectá el iPhone a **VISUALES** y abrí **http://10.42.0.1**. Safari puede avisar que esa red "no tiene internet": elegí mantenerte conectado. La Pi 3 tiene una sola antena wifi, así que mientras está VISUALES no hay internet ni Connect.
+
+Los wifis conocidos se agregan desde la app con **＋ Agregar wifi conocido**.
+
+La red es abierta y el control queda protegido con el PIN de la app. Para cambiar el nombre, ponerle clave u ocultarla: `sudo /opt/visuales/install/setup-ap.sh VISUALES - AR oculta` (el `-` es "sin clave").
+
+**Rescate sin app:** poné la SD en la PC y, en la partición `bootfs`, creá un archivo `visuales-red.txt` con una sola palabra: `auto`, `visuales` o `wifi`. La Pi lo aplica al arrancar. Lo que hace la red queda anotado en `red-log.txt`, en esa misma partición.
 
 ## Actualizar el programa más adelante
 

@@ -220,6 +220,15 @@
     <div id="uploads"></div>
     <p class="hint" id="free"></p>
     <ul id="liblist" class="liblist"></ul>
+
+    <div class="showbox" id="red">
+      <div class="row"><b>Red</b></div>
+      <p class="hint" id="red-estado">…</p>
+      <div class="seg" id="red-modo"><button data-v="auto">Auto</button><button data-v="visuales">Forzar VISUALES</button><button data-v="wifi">Solo wifi</button></div>
+      <p class="hint"><b>Auto:</b> al prender busca un wifi conocido (trabajo, casa) y si en un minuto no encuentra ninguno levanta VISUALES (http://10.42.0.1). <b>Forzar VISUALES</b> es para el día del show. Si la forzás desde acá y en 5 minutos ningún teléfono entra a VISUALES, vuelve sola a Auto.</p>
+      <p class="hint" id="red-conocidos"></p>
+      <button class="small wide" id="red-add">＋ Agregar wifi conocido</button>
+    </div>
   </section>
 </main>
 

@@ -205,6 +205,54 @@ class Server:
         self.library.rename(request.match_info["cid"], str(data.get("name", "")))
         return web.json_response({"ok": True})
 
+    # ---------- red (la aplica install/red.sh como root, vigilando estos archivos) ----------
+    def _red_info(self):
+        import shutil
+        import subprocess
+        modo = "auto"
+        try:
+            modo = (self.cfg.data_dir / "red-modo.txt").read_text().strip() or "auto"
+        except OSError:
+            pass
+        info = {"modo": modo, "disponible": bool(shutil.which("nmcli")), "conexion": None, "conocidos": []}
+        if not info["disponible"]:
+            return info
+
+        def nm(*args):
+            try:
+                return subprocess.run(["nmcli", "-t", *args], capture_output=True, text=True, timeout=5).stdout
+            except Exception:
+                return ""
+        st = {}
+        for line in nm("-f", "GENERAL.STATE,GENERAL.CONNECTION", "dev", "show", "wlan0").splitlines():
+            k, _, v = line.partition(":")
+            st[k] = v
+        if st.get("GENERAL.STATE", "").startswith("100"):
+            info["conexion"] = st.get("GENERAL.CONNECTION") or None
+        for line in nm("-f", "NAME,TYPE", "con", "show").splitlines():
+            name, _, typ = line.rpartition(":")
+            if typ == "802-11-wireless" and name != "visuales-ap":
+                info["conocidos"].append(name.replace("\\:", ":"))
+        return info
+
+    async def red_get(self, request):
+        return web.json_response(await asyncio.get_running_loop().run_in_executor(None, self._red_info))
+
+    async def red_set(self, request):
+        data = await request.json()
+        ssid = str(data.get("ssid") or "").strip()
+        if ssid:
+            clave = str(data.get("clave") or "")
+            if clave and len(clave) < 8:
+                return web.json_response({"ok": False, "error": "La clave del wifi tiene que tener 8 caracteres o más"})
+            f = self.cfg.data_dir / "red-wifi-nuevo.txt"
+            f.write_text(ssid[:32] + "\n" + clave[:63] + "\n")
+            f.chmod(0o600)
+        if data.get("modo") in ("auto", "visuales", "wifi"):
+            (self.cfg.data_dir / "red-modo.txt").write_text(data["modo"] + "\n")
+            log.info("modo de red -> %s", data["modo"])
+        return web.json_response({"ok": True})
+
     async def library_json(self, request):
         return web.json_response({"clips": self.library.list()})
 
@@ -234,6 +282,8 @@ class Server:
         app.router.add_delete("/api/clips/{cid}", self.delete_clip)
         app.router.add_post("/api/clips/{cid}/rename", self.rename_clip)
         app.router.add_post("/api/clips/new", self.new_clip)
+        app.router.add_get("/api/red", self.red_get)
+        app.router.add_post("/api/red", self.red_set)
         app.router.add_static("/static", WEB)
         app.router.add_static("/thumbs", self.cfg.thumbs_dir)
         return app

@@ -96,14 +96,74 @@ RestartSec=5
 WantedBy=multi-user.target
 UNIT
 
+echo "==> Red: wifi conocido (trabajo/casa) o red propia VISUALES (ver install/red.sh)"
+mkdir -p /etc/visuales
+[ -f /etc/visuales/red.conf ] || cat > /etc/visuales/red.conf <<'CONF'
+# Red propia de la Pi. Despues de cambiar: sudo systemctl start visuales-red
+SSID=VISUALES
+CLAVE=-          # "-" = abierta (el control queda protegido con el PIN de la app)
+OCULTA=no        # si = no aparece en la lista de redes (iPhone: Wi-Fi > Otra...)
+PAIS=AR
+ESPERA=60        # modo auto: segundos buscando un wifi conocido antes de levantar VISUALES
+CONF
+. /etc/visuales/red.conf
+raspi-config nonint do_wifi_country "$PAIS" 2>/dev/null || true
+DATA="$RUN_HOME/visuales-data"
+mkdir -p "$DATA"; chown "$RUN_USER" "$DATA"
+for ph in boot apply addwifi; do
+  case $ph in boot) U=visuales-red-boot ;; apply) U=visuales-red ;; addwifi) U=visuales-red-wifi ;; esac
+  cat > /etc/systemd/system/$U.service <<UNIT
+[Unit]
+Description=Visuales: red ($ph)
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=oneshot
+Environment=VISUALES_DATA=$DATA
+ExecStart=$DEST/install/red.sh $ph
+UNIT
+done
+cat >> /etc/systemd/system/visuales-red-boot.service <<'UNIT'
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+cat > /etc/systemd/system/visuales-red.path <<UNIT
+[Unit]
+Description=Visuales: la app cambio el modo de red
+
+[Path]
+PathChanged=$DATA/red-modo.txt
+Unit=visuales-red.service
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+cat > /etc/systemd/system/visuales-red-wifi.path <<UNIT
+[Unit]
+Description=Visuales: la app agrego un wifi conocido
+
+[Path]
+PathChanged=$DATA/red-wifi-nuevo.txt
+Unit=visuales-red-wifi.service
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+# la red propia la decide red.sh: que NetworkManager no la levante solo
+nmcli con modify visuales-ap connection.autoconnect no 2>/dev/null || true
+
 systemctl daemon-reload
+systemctl enable visuales-red-boot.service visuales-red.path visuales-red-wifi.path
+systemctl start visuales-red.path visuales-red-wifi.path || true
 systemctl enable visuales.service visuales-updater.service
 systemctl restart visuales.service || true
 # si esta instalacion la lanzo el propio updater, no reiniciarlo (se cortaria a si mismo)
 systemctl is-active -q visuales-updater.service || systemctl start visuales-updater.service || true
 echo
 echo "Listo. Siguientes pasos:"
-echo "  1) Red propia:      sudo $DEST/install/setup-ap.sh VISUALES clave-de-8-o-mas"
+echo "  1) Red: se elige desde la app (Biblioteca > Red). Por defecto: wifi conocido y, si no hay, VISUALES"
 echo "  2) HDMI fijo:       sudo $DEST/install/hdmi-mode.sh 576p   (opcional, si el conversor lo necesita)"
 echo "  3) sudo reboot"
 echo "Logs: journalctl -u visuales -f"

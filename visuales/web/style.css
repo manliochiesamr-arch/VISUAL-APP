@@ -141,3 +141,6 @@ h3:first-child { margin-top: 4px; }
 h3.sub { font-size: 13px; margin: 14px 0 4px; color: var(--dim); }
 #t-link { font: inherit; font-size: 15px; color: var(--txt); background: var(--bg); border: 1px solid var(--line);
   border-radius: 8px; padding: 8px; min-width: 0; }
+#red { margin-top: 16px; }
+#red .seg { margin: 6px 0; }
+#red .hint b { font-size: inherit; }

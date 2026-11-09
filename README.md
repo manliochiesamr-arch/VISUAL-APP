@@ -55,7 +55,6 @@ Se necesita **Raspberry Pi OS Bookworm 64-bit**. Se recomienda la versión **Lit
 # copiar esta carpeta a la Pi (pendrive o scp) y luego:
 cd visuales
 sudo ./install/install.sh
-sudo /opt/visuales/install/setup-ap.sh VISUALES unaclave123
 sudo /opt/visuales/install/hdmi-mode.sh 576p     # opcional, ver "HDMI a TV de tubo"
 sudo reboot
 ```
