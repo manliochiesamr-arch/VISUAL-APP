@@ -65,23 +65,52 @@
 
   <!-- CLIP: ajustes guardados con cada video -->
   <section id="tab-clip" class="tab">
-    <div class="seg" id="clip-target"><button data-v="next">NEXT</button><button data-v="live">AL AIRE</button></div>
-    <div class="preview" id="preview"><img id="pv-img" alt=""><span id="pv-empty">Sin clip</span></div>
+    <div class="seg" id="clip-target"><button data-v="next">NEXT</button><button data-v="live">AL AIRE</button><button data-v="text" id="ct-text" hidden>TEXTO</button></div>
+    <div class="preview" id="preview"><img id="pv-img" alt=""><div id="pv-text"></div><span id="pv-empty">Sin clip</span></div>
     <p class="clipname" id="clip-name">—</p>
-    <div class="row"><span class="lbl w">Encuadre</span>
+    <div id="deck-edit">
+    <div class="row vid"><span class="lbl w">Encuadre</span>
       <div class="seg" id="cfit"><button data-v="fit">Entero</button><button data-v="fill">Llenar</button><button data-v="stretch">Estirar</button></div></div>
-    <div class="row"><span class="lbl w">Zoom <i id="v-czoom">1.00x</i></span><div class="fader" id="f-czoom" data-clip="zoom" data-min="0.5" data-max="4"></div></div>
-    <div class="row"><span class="lbl w">Posición ↔</span><div class="fader center" id="f-cpanx" data-clip="panx" data-min="-1" data-max="1"></div></div>
-    <div class="row"><span class="lbl w">Posición ↕</span><div class="fader center" id="f-cpany" data-clip="pany" data-min="-1" data-max="1"></div></div>
-    <div class="row"><span class="lbl w">Velocidad <i id="v-cspeed">1.00x</i></span><div class="fader" id="f-cspeed" data-clip="speed" data-max="3"></div></div>
-    <div class="row genonly"><span class="lbl w">Color</span><div class="fader hue" id="f-chue" data-clip="hue"></div></div>
+    <div class="row vid"><span class="lbl w">Zoom <i id="v-czoom">1.00x</i></span><div class="fader" id="f-czoom" data-clip="zoom" data-min="0.5" data-max="4"></div></div>
+    <div class="row vid"><span class="lbl w">Posición ↔</span><div class="fader center" id="f-cpanx" data-clip="panx" data-min="-1" data-max="1"></div></div>
+    <div class="row vid"><span class="lbl w">Posición ↕</span><div class="fader center" id="f-cpany" data-clip="pany" data-min="-1" data-max="1"></div></div>
+    <div class="row vid"><span class="lbl w">Velocidad <i id="v-cspeed">1.00x</i></span><div class="fader" id="f-cspeed" data-clip="speed" data-max="3"></div></div>
+    <div class="row solidonly"><div class="swatches" id="c-swatches"></div></div>
+    <div class="row genonly solidonly"><span class="lbl w">Color</span><div class="fader hue" id="f-chue" data-clip="hue"></div></div>
+    <div class="row solidonly"><span class="lbl w">Saturación</span><div class="fader" id="f-csat" data-clip="sat"></div></div>
+    <div class="row solidonly"><span class="lbl w">Brillo</span><div class="fader" id="f-cbright" data-clip="bright"></div></div>
     <div class="row genonly"><span class="lbl w">Detalle</span><div class="fader" id="f-cdetail" data-clip="detail"></div></div>
     <div class="row">
-      <button class="small wide" id="c-speed1">Velocidad 1x</button>
-      <button class="small wide" id="c-center">Centrar</button>
+      <button class="small wide vid" id="c-speed1">Velocidad 1x</button>
+      <button class="small wide vid" id="c-center">Centrar</button>
       <button class="small wide" id="c-reset">Reset clip</button>
     </div>
-    <p class="hint">Estos ajustes quedan guardados en el video: la próxima vez que lo cargues ya sale así. Los efectos de "En vivo" se suman encima.</p>
+    <p class="hint">Estos ajustes quedan guardados en el clip: la próxima vez que lo cargues ya sale así. Los efectos de "En vivo" se suman encima.</p>
+    </div>
+
+    <div id="text-edit" hidden>
+      <div class="row"><textarea id="t-text" rows="2" maxlength="300" placeholder="Escribí el texto (Enter = otra línea)"></textarea></div>
+      <div class="row osd-quick" id="t-quick">
+        <button class="small" data-t="PLAY ▶">PLAY ▶</button><button class="small" data-t="● REC">● REC</button>
+        <button class="small" data-t="PAUSE ❚">PAUSE</button><button class="small" data-t="STOP ■">STOP</button>
+        <button class="small" data-t="{hora}">Hora</button><button class="small" data-t="{fecha}">Fecha</button>
+      </div>
+      <div class="row"><span class="lbl w">Lugar</span>
+        <div class="posgrid" id="t-pos">
+          <button data-v="tl">↖</button><button data-v="t">↑</button><button data-v="tr">↗</button>
+          <button data-v="l">←</button><button data-v="c">●</button><button data-v="r">→</button>
+          <button data-v="bl">↙</button><button data-v="b">↓</button><button data-v="br">↘</button>
+        </div></div>
+      <div class="row"><span class="lbl w">Tamaño</span>
+        <div class="seg" id="t-size"><button data-v="1">S</button><button data-v="2">M</button><button data-v="3">L</button><button data-v="4">XL</button></div></div>
+      <div class="row"><span class="lbl w">Color</span><div class="swatches" id="t-colors"></div></div>
+      <div class="row">
+        <button id="t-on" class="toggle wide">Al aire</button>
+        <button id="t-blink" class="toggle wide">Parpadeo (beat)</button>
+      </div>
+      <div class="row"><button class="small wide" id="t-ren">✎ Nombre</button><button class="small wide" id="t-alloff">Apagar todos los textos</button></div>
+      <p class="hint">Queda guardado en el recurso. En la grilla del show, tocar un texto lo prende o lo apaga encima de lo que esté al aire (podés tener varios a la vez). El ✎ de la miniatura lo abre acá.</p>
+    </div>
   </section>
 
   <!-- FX -->
@@ -174,8 +203,12 @@
     <div id="show-admin"></div>
     <label class="upload">
       <input type="file" id="file" accept="video/mp4,video/quicktime,.mp4,.mov,.m4v" multiple>
-      <span>＋ Subir videos MP4</span>
+      <span>＋ Subir videos MP4 / MOV</span>
     </label>
+    <div class="row newres">
+      <button class="wide" id="new-solid">＋ Sólido de color</button>
+      <button class="wide" id="new-text">＋ Texto</button>
+    </div>
     <p class="hint" id="usb" hidden></p>
     <div id="uploads"></div>
     <p class="hint" id="free"></p>

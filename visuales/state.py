@@ -9,7 +9,8 @@ ZOOM_CYCLES = (0.5, 1, 2, 4, 8, 16, 32)  # beats por ciclo de zoom
 ZOOM_MODES = ("fixed", "pulse", "in", "out")
 FITS = ("fit", "fill", "stretch")
 DEFAULT_FX = {"fit": "fit", "zoom": 1.0, "panx": 0.0, "pany": 0.0, "speed": 1.0,
-              "hue": 0.0, "detail": 0.5}  # hue/detail: solo para los generadores
+              "hue": 0.0, "detail": 0.5,   # hue/detail: generadores (hue tambien color del solido)
+              "sat": 1.0, "bright": 1.0}   # solo para los solidos de color
 
 
 OSD_POS = ("tl", "t", "tr", "l", "c", "r", "bl", "b", "br")
@@ -26,7 +27,7 @@ def clean_fx(fx):
     if fx.get("fit") in FITS:
         out["fit"] = fx["fit"]
     for k, lo, hi in (("zoom", 0.25, 4.0), ("panx", -1.0, 1.0), ("pany", -1.0, 1.0), ("speed", 0.0, 4.0),
-                      ("hue", 0.0, 1.0), ("detail", 0.0, 1.0)):
+                      ("hue", 0.0, 1.0), ("detail", 0.0, 1.0), ("sat", 0.0, 1.0), ("bright", 0.0, 1.0)):
         if k in fx:
             try:
                 out[k] = max(lo, min(hi, float(fx[k])))
@@ -97,6 +98,8 @@ class Mixer:
         self.osd = [new_layer(p) for p in ("tl", "tr", "c", "bl")]  # 4 capas de texto
         # glitch en vivo (sobre todo lo que esta al aire) y color global
         self.glitch = {"rgb": 0.0, "tracking": 0.0, "hue": 0.0, "sat": 1.0}
+        # recursos de texto de la biblioteca prendidos encima del aire (ids, en orden)
+        self.texts = []
         self.beat = BeatClock()
         self._last = time.monotonic()
 
@@ -202,6 +205,17 @@ class Mixer:
                     o["size"] = int(data["size"])
                 if "blink" in data:
                     o["blink"] = bool(data["blink"])
+            elif cmd == "text_toggle":  # prender/apagar un recurso de texto
+                c = data.get("clip")
+                if not c:
+                    return False
+                on = data.get("on", c not in self.texts)
+                if on and c not in self.texts:
+                    self.texts.append(c)
+                elif not on and c in self.texts:
+                    self.texts.remove(c)
+            elif cmd == "texts_off":
+                self.texts = []
             elif cmd == "tap":
                 self.beat.tap()
             elif cmd == "bpm":
@@ -214,6 +228,8 @@ class Mixer:
                 for d in self.decks.values():
                     if d["clip"] == data.get("clip"):
                         d["clip"] = None
+                if data.get("clip") in self.texts:
+                    self.texts.remove(data["clip"])
             else:
                 return False
             self.touch()
@@ -292,6 +308,7 @@ class Mixer:
                 "strobe": strobe,
                 "strobe_color": scol,
                 "glitch": dict(self.glitch, time=now % 1000.0),
+                "texts": list(self.texts),
                 "osd": [dict(o, on=o["on"] and bool(o["text"].strip()) and (not o["blink"] or (beats % 1.0) < 0.6))
                         for o in self.osd],
             }
@@ -352,6 +369,7 @@ class Mixer:
                 pass
             self.strobe = False
             self.quake = False
+            self.texts = []  # al cambiar de show se apagan los textos
             self.touch()
 
     def snapshot(self):
@@ -380,6 +398,7 @@ class Mixer:
                 "quake_amount": self.quake_amount,
                 "osd": [dict(o) for o in self.osd],
                 "glitch": dict(self.glitch),
+                "texts": list(self.texts),
                 "bpm": round(self.beat.bpm, 1),
                 "beat": int(self.beat.beats()),
             }

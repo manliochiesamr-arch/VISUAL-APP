@@ -111,10 +111,11 @@ def canvas_size(screen_aspect):
 
 
 def render_layers(layers, screen_aspect=4 / 3):
-    """Varias capas [(texto, lugar, tamano)] en un solo lienzo. None si no hay nada que mostrar."""
+    """Varias capas [(texto, lugar, tamano[, color])] en un solo lienzo. None si no hay nada que mostrar."""
     img = None
-    for text, pos, size in layers:
-        img = render(text, pos, size, screen_aspect, img=img) if text else img
+    for text, pos, size, *col in layers:
+        color = col[0] if col and col[0] else (1.0, 1.0, 1.0)
+        img = render(text, pos, size, screen_aspect, color=color, img=img) if text else img
     return img
 
 

@@ -117,3 +117,24 @@ h3:first-child { margin-top: 4px; }
 .posgrid button.on { background: var(--txt); color: var(--bg); }
 #osd-layer button.lit::after { content: ''; display: inline-block; width: 6px; height: 6px; margin-left: 5px;
   border-radius: 50%; background: var(--acc); vertical-align: middle; }
+.newres { gap: 8px; margin: 8px 0; }
+.newres button { padding: 12px 6px; border-radius: 10px; border: 1px dashed var(--line); background: var(--panel); color: var(--txt); font: inherit; }
+.clip.textclip { background: #000; }
+.clip .tedit { position: absolute; top: 3px; right: 3px; width: 28px; height: 24px; padding: 0; border-radius: 6px;
+  border: 0; background: rgba(255,255,255,.85); color: #000; font-size: 13px; }
+.tprev { position: absolute; inset: 6% 5%; display: flex; white-space: pre; font-family: ui-monospace, Menlo, monospace;
+  font-weight: 700; line-height: 1.15; text-shadow: 1px 1px 0 #000; overflow: hidden; pointer-events: none; }
+.tprev.pos-tl, .tprev.pos-t, .tprev.pos-tr { align-items: flex-start; }
+.tprev.pos-l, .tprev.pos-c, .tprev.pos-r { align-items: center; }
+.tprev.pos-bl, .tprev.pos-b, .tprev.pos-br { align-items: flex-end; }
+.tprev.pos-tl, .tprev.pos-l, .tprev.pos-bl { justify-content: flex-start; text-align: left; }
+.tprev.pos-t, .tprev.pos-c, .tprev.pos-b { justify-content: center; text-align: center; }
+.tprev.pos-tr, .tprev.pos-r, .tprev.pos-br { justify-content: flex-end; text-align: right; }
+.clip.textclip .tprev { bottom: 22px; }
+.noimg.tbox { position: relative; background: #000; }
+#t-text { width: 100%; font: inherit; font-size: 17px; color: var(--txt); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px; resize: vertical; }
+#t-colors, #c-swatches { flex: 1; }
+#c-swatches { grid-template-columns: repeat(10, 1fr); }
+#t-colors button[data-c="0,0,0"], #c-swatches button:last-child { border-color: #555; }
+#t-colors button.on { border-color: var(--acc); }

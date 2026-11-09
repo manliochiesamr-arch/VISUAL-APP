@@ -134,7 +134,8 @@ class OsdCache:
         if not layers:
             return None
         from . import osd
-        key = (tuple((osd.expand(o.get("text", "")), o.get("pos"), o.get("size")) for o in layers),
+        key = (tuple((osd.expand(o.get("text", "")), o.get("pos"), o.get("size"),
+                      tuple(o.get("color") or (1.0, 1.0, 1.0))) for o in layers),
                round(s["screen_aspect"], 2))
         if key != self.key:
             self.key = key

@@ -17,6 +17,31 @@ log = logging.getLogger("library")
 NICE = ["nice", "-n", "19"] if shutil.which("nice") else []
 
 
+TEXT_POS = ("tl", "t", "tr", "l", "c", "r", "bl", "b", "br")
+
+
+def clean_text(d):
+    """Ajustes validados de un recurso de texto."""
+    out = {"text": "", "pos": "c", "size": 3, "blink": False, "color": [1.0, 1.0, 1.0]}
+    d = d or {}
+    out["text"] = str(d.get("text", ""))[:300]
+    if d.get("pos") in TEXT_POS:
+        out["pos"] = d["pos"]
+    try:
+        if int(d.get("size", 3)) in (1, 2, 3, 4):
+            out["size"] = int(d.get("size", 3))
+    except (TypeError, ValueError):
+        pass
+    out["blink"] = bool(d.get("blink", False))
+    col = d.get("color")
+    if isinstance(col, (list, tuple)) and len(col) == 3:
+        try:
+            out["color"] = [max(0.0, min(1.0, float(v))) for v in col]
+        except (TypeError, ValueError):
+            pass
+    return out
+
+
 class Library:
     def __init__(self, cfg, on_change=None):
         self.cfg = cfg
@@ -92,6 +117,10 @@ class Library:
                 return None
             if c.get("kind") == "gen":
                 return "gen:" + c["gen"], c["width"], c["height"]
+            if c.get("kind") == "solid":
+                return "gen:solid", 16, 9
+            if c.get("kind") == "text":
+                return None  # los textos no van a un deck: se prenden encima del aire
             path = self.cfg.clips_dir / c["file"]
             if not c.get("width"):
                 c["width"], c["height"] = probe_size(path)
@@ -162,11 +191,71 @@ class Library:
             c = self.clips.pop(cid, None)
         if not c:
             return False
-        for p in (self.cfg.clips_dir / c["file"], self.cfg.thumbs_dir / f"{cid}.jpg",
-                  self.cfg.incoming_dir / c["source"]):
-            p.unlink(missing_ok=True)
+        if c.get("file"):
+            (self.cfg.clips_dir / c["file"]).unlink(missing_ok=True)
+        if c.get("source"):
+            (self.cfg.incoming_dir / c["source"]).unlink(missing_ok=True)
+        (self.cfg.thumbs_dir / f"{cid}.jpg").unlink(missing_ok=True)
         self._save()
         return True
+
+    # ---------- recursos: solidos de color y textos ----------
+    def create(self, kind, name=None, text=None):
+        """Crea un solido de color o un texto. Devuelve el clip."""
+        cid = kind + "-" + uuid.uuid4().hex[:8]
+        with self.lock:
+            n = sum(1 for c in self.clips.values() if c.get("kind") == kind) + 1
+            clip = {"id": cid, "kind": kind, "status": "ready", "error": None, "duration": None,
+                    "added": time.time(), "width": None, "height": None, "file": "", "source": ""}
+            if kind == "solid":
+                clip["name"] = (name or f"Sólido {n}")[:80]
+                clip["fx"] = {"fit": "stretch", "hue": 0.0, "sat": 1.0, "bright": 1.0}
+            elif kind == "text":
+                clip["text"] = clean_text({"text": text or name or ""})
+                clip["name"] = (name or (text or "").strip().split("\n")[0] or f"Texto {n}")[:80]
+            else:
+                raise ValueError("tipo desconocido")
+            self.clips[cid] = clip
+        self._save()
+        return clip
+
+    def kind(self, cid):
+        with self.lock:
+            return (self.clips.get(cid) or {}).get("kind")
+
+    def set_text(self, cid, data):
+        with self.lock:
+            c = self.clips.get(cid)
+            if not c or c.get("kind") != "text":
+                return False
+            c["text"] = clean_text({**c.get("text", {}), **data})
+            if "name" in data and str(data["name"]).strip():
+                c["name"] = str(data["name"]).strip()[:80]
+        self._save_later()
+        return True
+
+    def text_layers(self, ids, beats):
+        """Capas para el render de los textos prendidos (mismo formato que el texto en vivo)."""
+        out = []
+        with self.lock:
+            for cid in ids:
+                c = self.clips.get(cid)
+                if not c or c.get("kind") != "text":
+                    continue
+                t = c["text"]
+                on = bool(t["text"].strip()) and (not t["blink"] or (beats % 1.0) < 0.6)
+                out.append({"text": t["text"], "pos": t["pos"], "size": t["size"], "on": on,
+                            "color": tuple(t["color"])})
+        return out
+
+    def _save_later(self):
+        """Guarda y avisa a los telefonos con demora (para no escribir la SD con cada letra)."""
+        with self.lock:
+            if getattr(self, "_later", None):
+                self._later.cancel()
+            self._later = threading.Timer(0.8, self._save)
+            self._later.daemon = True
+            self._later.start()
 
     def get_fx(self, cid):
         with self.lock:
@@ -179,6 +268,9 @@ class Library:
             if cid not in self.clips:
                 return
             self.clips[cid]["fx"] = dict(fx)
+            if self.clips[cid].get("kind") == "solid":
+                self._save_later()  # el color se ve en la grilla: avisar a los telefonos
+                return
             if getattr(self, "_fx_timer", None):
                 self._fx_timer.cancel()
             self._fx_timer = threading.Timer(1.5, self._save_quiet)

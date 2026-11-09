@@ -112,6 +112,11 @@ class Server:
                 if cmd == "audio":  # espectro del mic del telefono (20 por segundo): no se guarda ni se difunde
                     self.mixer.set_audio(data.get("b"))
                     continue
+                if cmd == "textclip":  # edicion de un recurso de texto
+                    self.library.set_text(data.get("clip"), data)
+                    continue
+                if cmd == "cue" and self.library.kind(data.get("clip")) == "text":
+                    cmd, data = "text_toggle", {"clip": data["clip"]}
                 if cmd == "cue" and data.get("clip"):
                     data["fx"] = self.library.get_fx(data["clip"])
                 if self.mixer.apply(cmd, data):
@@ -184,6 +189,17 @@ class Server:
             await self.broadcast({"type": "state", **self.mixer.snapshot()})
         return web.json_response({"ok": ok})
 
+    async def new_clip(self, request):
+        """Crea un solido de color o un texto y lo suma al show activo."""
+        data = await request.json()
+        try:
+            clip = self.library.create(data.get("kind"), data.get("name"), data.get("text"))
+        except ValueError as e:
+            return web.json_response({"ok": False, "error": str(e)})
+        if self.shows.add_to_active(clip["id"]):
+            await self.broadcast(self.shows.payload())
+        return web.json_response({"ok": True, "clip": clip})
+
     async def rename_clip(self, request):
         data = await request.json()
         self.library.rename(request.match_info["cid"], str(data.get("name", "")))
@@ -217,6 +233,7 @@ class Server:
         app.router.add_get("/api/library", self.library_json)
         app.router.add_delete("/api/clips/{cid}", self.delete_clip)
         app.router.add_post("/api/clips/{cid}/rename", self.rename_clip)
+        app.router.add_post("/api/clips/new", self.new_clip)
         app.router.add_static("/static", WEB)
         app.router.add_static("/thumbs", self.cfg.thumbs_dir)
         return app

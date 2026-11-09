@@ -91,6 +91,8 @@ def main():
         dt, last = now - last, now
         s = mixer.tick()
         generators.set_audio(s["audio"])
+        if s["texts"]:  # recursos de texto prendidos: van encima, despues del texto en vivo
+            s["osd"] = s["osd"] + library.text_layers(s["texts"], s["beats"])
         for k, d in decks.items():
             clip = s["decks"][k]["clip"]
             d.load(library.path_of(clip) if clip else None)
@@ -98,6 +100,8 @@ def main():
             # y arranca cuando empieza el crossfade (GO)
             weight = s["xfade"] if k == "B" else 1.0 - s["xfade"]
             d.update(dt, s["decks"][k]["fx"]["speed"] if weight > 0.001 else 0.0, s["beats"], s["decks"][k]["fx"])
+            if d.gen == "solid":  # el solido siempre cubre toda la pantalla
+                s["decks"][k]["fx"].update(fit="stretch", zoom=1.0, panx=0.0, pany=0.0)
         renderer.draw(decks, s)
         if renderer.name == "sin-video" and now - t_retry > 15:
             # reintentar la pantalla cada 15 s (por si se conecto el HDMI o se libero la pantalla)

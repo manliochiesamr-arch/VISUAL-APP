@@ -102,7 +102,8 @@ function onState(s) {
   $$('#strobe-div button').forEach((b) => b.classList.toggle('on', parseFloat(b.dataset.v) === s.strobe_div));
   $$('#strobe-color button').forEach((b) => b.classList.toggle('on', b.dataset.v === s.strobe_color));
   $$('#swatches button').forEach((b) => b.classList.toggle('on', b.dataset.c === s.tint.map((x) => x.toFixed(2)).join(',')));
-  if (!prev || prev.decks.A.clip !== s.decks.A.clip || prev.decks.B.clip !== s.decks.B.clip || prev.live !== s.live) renderGrid();
+  if (!prev || prev.decks.A.clip !== s.decks.A.clip || prev.decks.B.clip !== s.decks.B.clip || prev.live !== s.live ||
+      String(prev.texts) !== String(s.texts)) renderGrid();
 }
 
 // luz de beat (interpolada localmente)
@@ -132,7 +133,9 @@ function renderGrid() {
   for (const c of ready) {
     const d = document.createElement('div');
     d.className = 'clip';
+    if (c.kind === 'text') { renderTextTile(d, c); g.appendChild(d); continue; }
     if (c.status !== 'ready') d.classList.add('busy');
+    else if (c.kind === 'solid') d.style.background = solidCss(c.fx);
     else d.style.backgroundImage = `url(${thumb(c)})`;
     let tag = '';
     if (state) {
@@ -151,6 +154,91 @@ function renderGrid() {
     g.appendChild(d);
   }
 }
+// ---------------- solidos y textos ----------------
+function hsv(h, s, v) {
+  const f = (n) => { const k = (n + h * 6) % 6; return v - v * s * Math.max(0, Math.min(k, 4 - k, 1)); };
+  return [f(5), f(3), f(1)];
+}
+function solidCss(fx) {
+  fx = fx || {};
+  const c = hsv(fx.hue || 0, fx.sat ?? 1, fx.bright ?? 1);
+  return `rgb(${c.map((x) => Math.round(x * 255)).join(',')})`;
+}
+const rgbCss = (c) => `rgb(${(c || [1, 1, 1]).map((x) => Math.round(x * 255)).join(',')})`;
+function textPreview(el, t, big) {
+  // vista aproximada: letra monoespaciada, ubicada como en la pantalla
+  el.className = 'tprev pos-' + t.pos;
+  el.textContent = t.text.replace(/\{hora\}/g, 'PM 9:41').replace(/\{fecha\}/g, 'NOV. 12 2026').toUpperCase() || '(vacío)';
+  el.style.color = rgbCss(t.color);
+  el.style.fontSize = (big === 'lib' ? [4, 5, 6, 7] : big ? [10, 16, 22, 30] : [6, 8, 11, 14])[t.size - 1] + 'px';
+}
+function renderTextTile(d, c) {
+  const on = !!(state && state.texts && state.texts.includes(c.id));
+  d.classList.add('textclip'); d.classList.toggle('live', on);
+  d.innerHTML = '<div></div>' + (on ? '<b class="tag">ON</b>' : '') + `<span>${esc(c.name)}</span><button class="tedit">✎</button>`;
+  textPreview(d.firstChild, c.text, false);
+  d.onclick = () => send('text_toggle', { clip: c.id });
+  d.querySelector('.tedit').onclick = (e) => { e.stopPropagation(); openText(c.id); };
+}
+let editText = null;
+function openText(id) {
+  editText = id; clipTarget = 'text';
+  $('nav button[data-tab=clip]').click();
+  const c = clips.find((x) => x.id === id);
+  if (c) $('#t-text').value = c.text.text;
+  renderClipPanel();
+}
+const textClip = () => clips.find((x) => x.id === editText && x.kind === 'text');
+const tsend = (data) => { if (editText) send('textclip', { clip: editText, ...data }); };
+let tTimer = null;
+$('#t-text').oninput = (e) => { clearTimeout(tTimer); tTimer = setTimeout(() => tsend({ text: e.target.value }), 250); };
+$$('#t-quick button').forEach((b) => b.onclick = () => {
+  const ti = $('#t-text');
+  ti.value = (ti.value ? ti.value + ' ' : '') + b.dataset.t;
+  tsend({ text: ti.value });
+});
+$$('#t-pos button').forEach((b) => b.onclick = () => tsend({ pos: b.dataset.v }));
+$$('#t-size button').forEach((b) => b.onclick = () => tsend({ size: parseInt(b.dataset.v, 10) }));
+$('#t-blink').onclick = () => { const c = textClip(); if (c) tsend({ blink: !c.text.blink }); };
+$('#t-on').onclick = () => { if (editText) send('text_toggle', { clip: editText }); };
+$('#t-alloff').onclick = () => send('texts_off');
+$('#t-ren').onclick = async () => {
+  const c = textClip(); if (!c) return;
+  const n = await askText('Nombre del texto', c.name);
+  if (n) tsend({ name: n });
+};
+const TEXT_COLORS = [[1,1,1],[1,1,0.2],[0.2,1,0.3],[0.1,0.9,1],[1,0.15,0.15],[1,0.2,0.8],[0.25,0.35,1],[0,0,0]];
+for (const col of TEXT_COLORS) {
+  const b = document.createElement('button');
+  b.dataset.c = col.join(','); b.style.background = rgbCss(col);
+  b.onclick = () => tsend({ color: col });
+  $('#t-colors').appendChild(b);
+}
+// colores rapidos del solido (tono, saturacion, brillo)
+const SOLID_COLORS = [[0,0,1],[0,1,1],[0.08,1,1],[0.16,1,1],[0.33,1,1],[0.5,1,1],[0.63,1,1],[0.8,1,1],[0.9,1,1],[0,0,0]];
+for (const [h, s, v] of SOLID_COLORS) {
+  const b = document.createElement('button');
+  b.style.background = solidCss({ hue: h, sat: s, bright: v });
+  b.onclick = () => send('clipfx', { deck: clipDeck(), hue: h, sat: s, bright: v });
+  $('#c-swatches').appendChild(b);
+}
+async function newResource(kind) {
+  let body = { kind };
+  if (kind === 'text') {
+    const t = await askText('Texto (después lo editás en la pestaña Clip)', '');
+    if (!t) return;
+    body.text = t;
+  }
+  const r = await fetch('/api/clips/new', { method: 'POST', body: JSON.stringify(body) }).then((x) => x.json()).catch(() => null);
+  if (!r || !r.ok) return alert('No se pudo crear: ' + ((r && r.error) || 'error de red'));
+  if (kind === 'text') {
+    if (!clips.find((c) => c.id === r.clip.id)) clips.unshift(r.clip);
+    openText(r.clip.id);
+  }
+}
+$('#new-solid').onclick = () => newResource('solid');
+$('#new-text').onclick = () => newResource('text');
+
 function renderLibrary() {
   renderGrid();
   const ul = $('#liblist');
@@ -159,19 +247,25 @@ function renderLibrary() {
   for (const c of clips) {
     const li = document.createElement('li');
     li.className = 'st-' + c.status;
-    const dur = c.kind === 'gen' ? ' · generativo' : c.duration ? ` · ${Math.round(c.duration)}s` : '';
-    li.innerHTML = (c.status === 'ready' ? `<img src="${thumb(c)}">` : '<div class="noimg"></div>') +
+    const dur = c.kind === 'gen' ? ' · generativo' : c.kind === 'solid' ? ' · sólido' : c.kind === 'text' ? ' · texto'
+      : c.duration ? ` · ${Math.round(c.duration)}s` : '';
+    const pic = c.kind === 'solid' ? `<div class="noimg" style="background:${solidCss(c.fx)}"></div>`
+      : c.kind === 'text' ? '<div class="noimg tbox"><div></div></div>'
+      : c.status === 'ready' ? `<img src="${thumb(c)}">` : '<div class="noimg"></div>';
+    li.innerHTML = pic +
       `<div class="meta"><b>${esc(c.name)}</b><small>${label[c.status] || c.status}${c.error ? ': ' + esc(c.error) : ''}${dur}</small></div>` +
       (activeShow() ? `<button class="small inshow${activeShow().clips.includes(c.id) ? ' on' : ''}">${activeShow().clips.includes(c.id) ? '✓ show' : '＋ show'}</button>` : '') +
       (c.kind === 'gen' ? '' : '<button class="small ren">✎</button><button class="small del">🗑</button>');
     const ins = li.querySelector('.inshow');
     if (ins) ins.onclick = () => send('show_toggle_clip', { id: shows.active, clip: c.id });
+    if (c.kind === 'text') { textPreview(li.querySelector('.tbox div'), c.text, 'lib'); li.querySelector('.tbox').onclick = () => openText(c.id); }
     if (c.kind !== 'gen') li.querySelector('.del').onclick = async () => {
       if (!confirm(`¿Borrar "${c.name}"?`)) return;
       await fetch(`/api/clips/${c.id}`, { method: 'DELETE' });
     };
     if (c.kind !== 'gen') li.querySelector('.ren').onclick = async () => {
-      const n = await askText('Nombre del video', c.name);
+      if (c.kind === 'text') return openText(c.id);
+      const n = await askText('Nombre', c.name);
       if (n) await fetch(`/api/clips/${c.id}/rename`, { method: 'POST', body: JSON.stringify({ name: n }) });
     };
     ul.appendChild(li);
@@ -297,6 +391,23 @@ $$('#screen button').forEach((b) => b.onclick = () => send('view', { screen: b.d
 let clipTarget = 'next';
 function clipDeck() { return state ? state[clipTarget] : 'B'; }
 $$('#clip-target button').forEach((b) => b.onclick = () => { clipTarget = b.dataset.v; renderClipPanel(); });
+function renderTextPanel() {
+  const c = textClip();
+  $('#deck-edit').hidden = true; $('#text-edit').hidden = !c;
+  $('#pv-img').style.display = 'none';
+  const pt = $('#pv-text');
+  $('#pv-empty').style.display = c ? 'none' : '';
+  $('#preview').style.background = '#000';
+  if (!c) { $('#clip-name').textContent = 'No hay texto elegido'; pt.textContent = ''; return; }
+  const on = !!(state.texts && state.texts.includes(c.id));
+  $('#clip-name').textContent = `TEXTO · ${c.name}`;
+  const ti = $('#t-text');
+  if (document.activeElement !== ti && ti.value !== c.text.text) ti.value = c.text.text;
+  segOn('#t-pos', c.text.pos); segOn('#t-size', String(c.text.size));
+  $('#t-on').classList.toggle('on', on); $('#t-blink').classList.toggle('on', c.text.blink);
+  $$('#t-colors button').forEach((b) => b.classList.toggle('on', b.dataset.c === c.text.color.join(',')));
+  textPreview(pt, c.text, true);
+}
 $$('#cfit button').forEach((b) => b.onclick = () => send('clipfx', { deck: clipDeck(), fit: b.dataset.v }));
 $('#c-speed1').onclick = () => send('clipfx', { deck: clipDeck(), speed: 1 });
 $('#c-center').onclick = () => send('clipfx', { deck: clipDeck(), panx: 0, pany: 0 });
@@ -315,7 +426,13 @@ function fitScale(ca, sa, mode) {
 }
 function renderClipPanel() {
   if (!state) return;
+  $('#ct-text').hidden = !editText;
+  if (clipTarget === 'text' && !editText) clipTarget = 'next';
   segOn('#clip-target', clipTarget);
+  if (clipTarget === 'text') return renderTextPanel();
+  $('#deck-edit').hidden = false; $('#text-edit').hidden = true;
+  $('#pv-text').textContent = ''; $('#pv-text').className = '';
+  $('#preview').style.background = '';
   const deck = state.decks[clipDeck()], fx = deck.fx;
   const c = clips.find((x) => x.id === deck.clip);
   $('#clip-name').textContent = c ? `${clipTarget === 'live' ? 'AL AIRE' : 'NEXT'} · ${c.name}` : 'No hay clip en ' + (clipTarget === 'live' ? 'el aire' : 'NEXT');
@@ -324,8 +441,19 @@ function renderClipPanel() {
   setFader('f-cpanx', fx.panx); setFader('f-cpany', fx.pany);
   setFader('f-cspeed', fx.speed); $('#v-cspeed').textContent = fx.speed.toFixed(2) + 'x';
   const isGen = !!(c && c.kind === 'gen');
-  $$('#tab-clip .genonly').forEach((el) => { el.hidden = !isGen; });
-  if (isGen) { setFader('f-chue', fx.hue || 0); setFader('f-cdetail', fx.detail ?? 0.5); }
+  const isSolid = !!(c && c.kind === 'solid');
+  $$('#tab-clip .genonly, #tab-clip .solidonly').forEach((el) => { el.hidden = true; });
+  $$('#tab-clip .vid').forEach((el) => { el.hidden = isSolid; });
+  if (isGen) $$('#tab-clip .genonly').forEach((el) => { el.hidden = false; });
+  if (isSolid) $$('#tab-clip .solidonly').forEach((el) => { el.hidden = false; });
+  if (isGen || isSolid) setFader('f-chue', fx.hue || 0);
+  if (isGen) setFader('f-cdetail', fx.detail ?? 0.5);
+  if (isSolid) {
+    setFader('f-csat', fx.sat ?? 1); setFader('f-cbright', fx.bright ?? 1);
+    $('#preview').style.background = solidCss(fx);
+    $('#pv-empty').style.display = 'none'; $('#pv-img').style.display = 'none';
+    return;
+  }
   // vista previa del encuadre con la miniatura
   const pv = $('#preview'), img = $('#pv-img');
   const sa = state.screen === '16:9' ? 16 / 9 : 4 / 3;

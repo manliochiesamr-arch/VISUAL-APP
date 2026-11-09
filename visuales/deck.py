@@ -91,6 +91,15 @@ class Deck:
 
     def update(self, dt, speed, beats=0.0, fx=None):
         """Avanza el reloj del clip y saca de la cola los frames necesarios."""
+        if self.gen == "solid" and self.src:
+            import colorsys
+            fx = fx or {}
+            rgb = colorsys.hsv_to_rgb(fx.get("hue", 0.0), fx.get("sat", 1.0), fx.get("bright", 1.0))
+            px = bytes(int(round(v * 255)) for v in rgb)
+            if self.frame is None or self.frame[:3] != px:
+                self.frame = px * (self.w * self.h)
+                self.frame_serial += 1
+            return
         if self.gen and self.src:
             self.t += dt * speed
             self.acc = getattr(self, "acc", 0.0) + dt
