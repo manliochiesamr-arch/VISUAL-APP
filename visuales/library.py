@@ -70,14 +70,15 @@ class Library:
 
     # ---------- alta ----------
     def new_upload_path(self, filename):
-        """Devuelve (id, ruta destino) para un archivo entrante. Lanza ValueError si no es mp4."""
-        if not filename.lower().endswith(".mp4"):
-            raise ValueError("Solo se aceptan archivos .mp4")
+        """Devuelve (id, ruta destino) para un archivo entrante. Lanza ValueError si no es un video aceptado."""
+        ext = os.path.splitext(filename)[1].lower()
+        if ext not in self.cfg.video_exts:
+            raise ValueError("Solo se aceptan videos " + " / ".join(self.cfg.video_exts))
         cid = uuid.uuid4().hex[:10]
-        return cid, self.cfg.incoming_dir / f"{cid}.mp4"
+        return cid, self.cfg.incoming_dir / f"{cid}{ext}"
 
     def add_uploaded(self, cid, filename, path):
-        name = re.sub(r"\.mp4$", "", os.path.basename(filename), flags=re.I)
+        name = os.path.splitext(os.path.basename(filename))[0]
         clip = {
             "id": cid, "name": name, "source": path.name, "file": f"{cid}.mp4",
             "status": "queued", "error": None, "duration": None, "added": time.time(),
@@ -96,20 +97,29 @@ class Library:
     def _probe_error(self, path, clip):
         try:
             out = subprocess.run(
-                ["ffprobe", "-v", "error", "-show_entries", "format=format_name,duration:stream=codec_type,codec_name",
+                ["ffprobe", "-v", "error", "-show_entries",
+                 "format=format_name,duration:stream=codec_type,codec_name,width,height,pix_fmt,r_frame_rate",
                  "-of", "json", str(path)], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
             info = json.loads(out.stdout or "{}")
         except Exception as e:
             return f"No se pudo leer el archivo ({e})"
         fmt = info.get("format", {})
-        if "mp4" not in fmt.get("format_name", ""):
-            return "El archivo no es un MP4 valido"
+        if "mp4" not in fmt.get("format_name", ""):  # mp4 y mov comparten formato ("mov,mp4,...")
+            return "El archivo no es un MP4/MOV valido"
         vids = [s for s in info.get("streams", []) if s.get("codec_type") == "video"]
         if not vids:
             return "El archivo no tiene video"
         codec = vids[0].get("codec_name")
         if codec not in self.cfg.allowed_codecs:
-            return f"Codec {codec} no soportado: solo MP4 H.264"
+            return f"Codec {codec} no soportado"
+        v = vids[0]
+        try:
+            num, den = (v.get("r_frame_rate") or "0/1").split("/")
+            fps = float(num) / float(den or 1)
+        except (ValueError, ZeroDivisionError):
+            fps = 0
+        clip["probe"] = {"codec": codec, "w": v.get("width"), "h": v.get("height"),
+                         "pix": v.get("pix_fmt"), "fps": round(fps, 2)}
         try:
             clip["duration"] = round(float(fmt.get("duration", 0)), 1)
         except ValueError:
@@ -185,11 +195,28 @@ class Library:
         wide = f"gt(iw/ih,{mw}/{mh})"
         vf = (f"scale=iw*sar:ih,setsar=1,"
               f"scale='if({wide},{mw},-2)':'if({wide},-2,{mh})',setsar=1,fps={fps}")
-        cmd = NICE + ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
-               "-i", str(src), "-an", "-vf", vf, "-c:v", "libx264", "-preset", "veryfast",
-               "-crf", "23", "-g", str(fps), "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(tmp)]
+        base = NICE + ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-i", str(src), "-an"]
+        tail = ["-movflags", "+faststart", str(tmp)]
+        pr = c.get("probe") or {}
         t0 = time.time()
-        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+        attempts = []
+        if (pr.get("codec") == "h264" and pr.get("pix") == "yuv420p" and pr.get("h") and pr["h"] <= mh
+                and pr.get("w") and pr["w"] <= mw and abs((pr.get("fps") or 0) - fps) < 0.5):
+            # ya esta en el formato final: se copia tal cual, sin recodificar (instantaneo)
+            attempts.append(("copia", base + ["-c:v", "copy"] + tail))
+        if hw_encoder():
+            # encoder por hardware de la Pi: varias veces mas rapido que libx264
+            attempts.append(("hw", base + ["-vf", vf + ",format=yuv420p", "-c:v", "h264_v4l2m2m",
+                                           "-b:v", "2500k", "-g", str(fps)] + tail))
+        attempts.append(("x264", base + ["-vf", vf, "-c:v", "libx264", "-preset", "superfast", "-crf", "23",
+                                         "-g", str(fps), "-pix_fmt", "yuv420p"] + tail))
+        for how, cmd in attempts:
+            r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+            if r.returncode == 0 and tmp.exists() and tmp.stat().st_size > 1000 and probe_size(tmp)[0]:
+                log.info("clip %s convertido (%s)", cid, how)
+                break
+            log.warning("conversion %s fallo para %s: %s", how, cid, (r.stderr or "")[-300:])
+            tmp.unlink(missing_ok=True)
         if r.returncode != 0 or not tmp.exists():
             log.error("conversion fallo %s: %s", cid, r.stderr[-500:])
             tmp.unlink(missing_ok=True)
@@ -209,6 +236,24 @@ class Library:
         self._set(cid, width=vw, height=vh)
         log.info("clip %s listo en %.1fs", cid, time.time() - t0)
         self._set(cid, status="ready")
+
+
+_HW = None
+
+
+def hw_encoder():
+    """True si ffmpeg puede codificar H.264 por hardware (Pi 3/4: h264_v4l2m2m en /dev/video11)."""
+    global _HW
+    if _HW is None:
+        _HW = False
+        if os.path.exists("/dev/video11"):
+            try:
+                out = subprocess.run(["ffmpeg", "-hide_banner", "-encoders"], capture_output=True, text=True, timeout=20)
+                _HW = "h264_v4l2m2m" in out.stdout
+            except Exception:
+                pass
+        log.info("encoder por hardware: %s", "si" if _HW else "no")
+    return _HW
 
 
 def disk_free_gb(path):

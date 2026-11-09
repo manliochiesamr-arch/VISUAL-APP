@@ -34,7 +34,9 @@ class Config:
     renderer: str = field(default_factory=lambda: _env("RENDERER", "auto"))  # auto | gl | sdl
     fullscreen: bool = field(default_factory=lambda: _env("FULLSCREEN", True, bool))
     # Solo se aceptan MP4 con video H.264 (evita HEVC/archivos pesados en la Pi)
-    allowed_codecs: tuple = ("h264",)
+    # Formatos aceptados: todo se convierte una vez a H.264 liviano al importar
+    video_exts: tuple = (".mp4", ".mov", ".m4v")
+    allowed_codecs: tuple = ("h264", "hevc", "mpeg4", "prores", "mjpeg", "dnxhd", "vp9", "av1")
     max_upload_mb: int = field(default_factory=lambda: _env("MAX_UPLOAD_MB", 2048, int))
     # PIN para controlar desde la web (vacio = sin PIN). En la Pi: sudo /opt/visuales/install/set-pin.sh 1234
     # carpeta donde se montan los pendrives (regla udev de install.sh)

@@ -42,7 +42,7 @@ class UsbImporter:
             for dirpath, dirs, files in os.walk(mount):
                 dirs[:] = [d for d in dirs if not d.startswith(".") and d != "System Volume Information"]
                 for f in sorted(files):
-                    if f.lower().endswith(".mp4") and not f.startswith("._"):
+                    if f.lower().endswith(self.cfg.video_exts) and not f.startswith("._"):
                         p = Path(dirpath) / f
                         try:
                             key = f"{f}|{p.stat().st_size}"
@@ -94,5 +94,5 @@ class UsbImporter:
             write_json(self.db, {"files": sorted(self.seen)})
         msg = f"Pendrive: {ok} video(s) importados, convirtiendo…"
         if bad:
-            msg += f" {bad} rechazado(s) (solo MP4 H.264)"
+            msg += f" {bad} rechazado(s) (formato no soportado)"
         self._set_status(msg + " Ya podes sacar el pendrive.")
