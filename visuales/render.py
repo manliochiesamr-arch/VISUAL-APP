@@ -103,6 +103,9 @@ vec3 hueSat(vec3 c, float h, float s) {
 
 // un deck con su glitch propio (el del clip)
 vec3 deck(sampler2D tex, vec2 fit, vec3 clip, float rep, vec4 g, vec2 p) {
+#ifndef CLIPGL
+    return sampleDeck(tex, fit, clip, rep, p);
+#else
     float band = 0.0;
     if (g.y > 0.001) p.x += g.y * trackDx(band);
     vec3 c;
@@ -116,8 +119,10 @@ vec3 deck(sampler2D tex, vec2 fit, vec3 clip, float rep, vec4 g, vec2 p) {
     if (g.y > 0.001) c = mix(c, vec3(hash(uv * 400.0 + time)), band * g.y * 0.6);
     if (g.z > 0.001 || abs(g.w - 1.0) > 0.001) c = hueSat(c, g.z, g.w);
     return c;
+#endif
 }
 
+#ifdef ECHO
 // eco: copias corridas que se van apagando (y cambiando de tono), fundidas en modo "trama" (screen)
 vec3 echo(sampler2D tex, vec2 fit, vec3 clip, float rep, vec4 e, vec2 p, vec3 c) {
     vec2 step = e.yz * 0.06;
@@ -131,20 +136,25 @@ vec3 echo(sampler2D tex, vec2 fit, vec3 clip, float rep, vec4 e, vec2 p, vec3 c)
     }
     return c;
 }
+#endif
 
 vec3 decks(vec2 p) {
     vec3 a = hasA > 0.5 ? deck(texA, fitA, clipA, repA, glA, p) : vec3(0.0);
     vec3 b = hasB > 0.5 ? deck(texB, fitB, clipB, repB, glB, p) : vec3(0.0);
+#ifdef ECHO
     if (hasA > 0.5 && ecoA.x > 1.5) a = echo(texA, fitA, clipA, repA, ecoA, p, a);
     if (hasB > 0.5 && ecoB.x > 1.5) b = echo(texB, fitB, clipB, repB, ecoB, p, b);
+#endif
     return mix(a, b, xfade);
 }
 
 vec3 scene(vec2 p) {
     vec3 c = decks(p);
+#ifdef ZMIX
     if (zmix > 0.001) {                                      // zoom infinito: se funde con la escala siguiente
         c = mix(c, decks((p - offset) * zratio + offset), zmix);
     }
+#endif
     if (hasF > 0.5) {                                        // texto con efectos: se mueve con la imagen
         vec2 tf = p + 0.5;
         if (tf.x >= 0.0 && tf.x <= 1.0 && tf.y >= 0.0 && tf.y <= 1.0) {
@@ -160,12 +170,16 @@ void main() {
     float band = 0.0;
     if (tracking > 0.001) p.x += tracking * trackDx(band);
     vec3 c;
+#ifdef RGB
     if (rgbSplit > 0.001) {
         float dx = rgbSplit * 0.035;
         c = vec3(scene(p + vec2(dx, 0.0)).r, scene(p).g, scene(p - vec2(dx, 0.0)).b);
     } else {
         c = scene(p);
     }
+#else
+    c = scene(p);
+#endif
     if (tracking > 0.001) {
         float n = hash(uv * 400.0 + time);
         c = mix(c, vec3(n), band * tracking * 0.6);
@@ -185,6 +199,35 @@ void main() {
 # uniform del shader, clave en s["glitch"], valor por defecto
 GLITCH_UNIFORMS = (("rgbSplit", "rgb", 0.0), ("tracking", "tracking", 0.0), ("hueShift", "hue", 0.0),
                    ("saturation", "sat", 1.0), ("time", "time", 0.0))
+
+
+SHADER_FEATURES = ("ECHO", "ZMIX", "RGB", "CLIPGL")
+
+
+def with_features(src, feats):
+    """Agrega los #define de las partes opcionales del shader (despues de #version)."""
+    src = src.lstrip()
+    first, rest = src.split("\n", 1) if src.startswith("#version") else ("", src)
+    return first + "\n" + "".join(f"#define {f}\n" for f in sorted(feats)) + rest
+
+
+def shader_features(s):
+    """Partes del shader que hacen falta para este cuadro."""
+    f = set()
+    if s.get("zmix", 0.0) > 0.001:
+        f.add("ZMIX")
+    if (s.get("glitch") or {}).get("rgb", 0.0) > 0.001:
+        f.add("RGB")
+    for d in s["decks"].values():
+        if not d.get("clip"):
+            continue
+        fx = d["fx"]
+        if fx.get("eco_n", 1) > 1:
+            f.add("ECHO")
+        if (fx.get("g_rgb", 0) > 0.001 or fx.get("g_trk", 0) > 0.001 or fx.get("g_hue", 0) > 0.001
+                or abs(fx.get("g_sat", 1.0) - 1.0) > 0.001):
+            f.add("CLIPGL")
+    return frozenset(f)
 
 
 def clip_echo(fx):
@@ -266,7 +309,7 @@ class GLRenderer:
         self.size = pygame.display.get_surface().get_size()
         self.ctx = moderngl.create_context(require=310)
         log.info("OpenGL: %s / %s", self.ctx.info.get("GL_RENDERER"), self.ctx.info.get("GL_VERSION"))
-        self.prog = self.ctx.program(vertex_shader=VERT, fragment_shader=FRAG)
+        self.prog = self.ctx.program(vertex_shader=VERT, fragment_shader=with_features(FRAG, SHADER_FEATURES))
         quad = struct.pack("8f", -1, -1, 1, -1, -1, 1, 1, 1)
         self.vbo = self.ctx.buffer(quad)
         self.vao = self.ctx.vertex_array(self.prog, [(self.vbo, "2f", "pos")])
@@ -388,29 +431,23 @@ class GL2Renderer:
         open_window(cfg, opengl=True, gl_version=(2, 1))
         self.size = pygame.display.get_surface().get_size()
         log.info("OpenGL: %s / %s", GL.glGetString(GL.GL_RENDERER), GL.glGetString(GL.GL_VERSION))
-        self.prog = self._program(VERT2, FRAG2)
-        GL.glUseProgram(self.prog)
+        self.progs, self.cur = {}, None
+        self._use(frozenset())
         import array
         quad = array.array("f", [-1, -1, 1, -1, -1, 1, 1, 1])
         self.vbo = GL.glGenBuffers(1)
         GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.vbo)
         GL.glBufferData(GL.GL_ARRAY_BUFFER, len(quad) * 4, quad.tobytes(), GL.GL_STATIC_DRAW)
-        loc = GL.glGetAttribLocation(self.prog, "pos")
-        GL.glEnableVertexAttribArray(loc)
-        GL.glVertexAttribPointer(loc, 2, GL.GL_FLOAT, GL.GL_FALSE, 0, ctypes.c_void_p(0))
+        GL.glEnableVertexAttribArray(0)
+        GL.glVertexAttribPointer(0, 2, GL.GL_FLOAT, GL.GL_FALSE, 0, ctypes.c_void_p(0))
         GL.glPixelStorei(GL.GL_UNPACK_ALIGNMENT, 1)
-        self.u = {n: GL.glGetUniformLocation(self.prog, n) for n in (
-            "texA", "texB", "hasA", "hasB", "fitA", "fitB", "clipA", "clipB", "zoom", "offset", "droste",
-            "zratio", "zmix", "repA", "repB", "ecoA", "ecoB",
-            "xfade", "master", "tint", "tintAmount", "strobe", "strobeColor", "texT", "hasT", "texF", "hasF",
-            "glA", "glB",
-            *[n for n, _, _ in GLITCH_UNIFORMS])}
-        GL.glUniform1i(self.u["texA"], 0)
-        GL.glUniform1i(self.u["texB"], 1)
+        # las variantes mas comunes, compiladas de entrada (compilar en pleno show traba un instante)
+        for feats in (("RGB",), ("CLIPGL",), ("ZMIX",), ("ECHO",)):
+            self._use(frozenset(feats))
+        self._use(frozenset())
         # textos: limpio (unidad 2) y con efectos (unidad 3)
         self.osd_slots = []
         for unit, has, sampler, fx in ((2, "hasT", "texT", False), (3, "hasF", "texF", True)):
-            GL.glUniform1i(self.u[sampler], unit)
             GL.glActiveTexture(GL.GL_TEXTURE0 + unit)
             tex = GL.glGenTextures(1)
             GL.glBindTexture(GL.GL_TEXTURE_2D, tex)
@@ -428,6 +465,36 @@ class GL2Renderer:
                 GL.glTexParameteri(GL.GL_TEXTURE_2D, p, v)
             self.tex[k] = {"id": t, "size": None, "serial": -1}
 
+    UNIFORMS = ("texA", "texB", "hasA", "hasB", "fitA", "fitB", "clipA", "clipB", "zoom", "offset", "droste",
+                "zratio", "zmix", "repA", "repB", "ecoA", "ecoB",
+                "xfade", "master", "tint", "tintAmount", "strobe", "strobeColor", "texT", "hasT", "texF", "hasF",
+                "glA", "glB", *[n for n, _, _ in GLITCH_UNIFORMS])
+
+    def _use(self, feats):
+        """Activa la variante del shader con estas partes. La GPU de la Pi 3 (VideoCore IV) no puede
+        con el shader completo: si es muy grande no dibuja nada (pantalla negra, sin error)."""
+        GL = self.GL
+        if feats not in self.progs:
+            try:
+                prog = self._program(VERT2, with_features(FRAG2, feats))
+            except RuntimeError as e:
+                log.error("variante del shader %s no compila (%s): uso la basica", sorted(feats), e)
+                if not feats:
+                    raise
+                self._use(frozenset())
+                self.progs[feats] = self.progs[frozenset()]
+            else:
+                GL.glUseProgram(prog)
+                u = {n: GL.glGetUniformLocation(prog, n) for n in self.UNIFORMS}
+                for name, unit in (("texA", 0), ("texB", 1), ("texT", 2), ("texF", 3)):
+                    GL.glUniform1i(u[name], unit)
+                self.progs[feats] = (prog, u)
+                log.info("shader %s listo", "+".join(sorted(feats)) or "basico")
+        if self.cur != feats:
+            self.cur = feats
+            prog, self.u = self.progs[feats]
+            GL.glUseProgram(prog)
+
     def _program(self, vs, fs):
         GL = self.GL
         prog = GL.glCreateProgram()
@@ -438,12 +505,14 @@ class GL2Renderer:
             if not GL.glGetShaderiv(sh, GL.GL_COMPILE_STATUS):
                 raise RuntimeError("shader: %s" % GL.glGetShaderInfoLog(sh))
             GL.glAttachShader(prog, sh)
+        GL.glBindAttribLocation(prog, 0, "pos")
         GL.glLinkProgram(prog)
         if not GL.glGetProgramiv(prog, GL.GL_LINK_STATUS):
             raise RuntimeError("link: %s" % GL.glGetProgramInfoLog(prog))
         return prog
 
     def draw(self, decks, s):
+        self._use(shader_features(s))
         GL, u = self.GL, self.u
         for unit, k in enumerate("AB"):
             d, t = decks[k], self.tex[k]
