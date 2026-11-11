@@ -38,6 +38,8 @@ uniform vec2 offset;    // terremoto
 uniform float droste;   // 1 = zoom infinito: bordes en espejo (sin recuadros ni negro)
 uniform float zratio;   // zoom infinito: escala de la segunda capa respecto de la primera
 uniform float zmix;     // zoom infinito: cuanto se ve la segunda capa (fundido entre escalas)
+uniform vec4 ecoA;      // eco del clip: copias, corrimiento x, y, cambio de tono por copia
+uniform vec4 ecoB;
 uniform float repA;     // repeticion del clip: copias por lado (1 = normal)
 uniform float repB;
 uniform float xfade;
@@ -116,9 +118,25 @@ vec3 deck(sampler2D tex, vec2 fit, vec3 clip, float rep, vec4 g, vec2 p) {
     return c;
 }
 
+// eco: copias corridas que se van apagando (y cambiando de tono), fundidas en modo "trama" (screen)
+vec3 echo(sampler2D tex, vec2 fit, vec3 clip, float rep, vec4 e, vec2 p, vec3 c) {
+    vec2 step = e.yz * 0.06;
+    for (int i = 1; i < 20; i++) {
+        float fi = float(i);
+        if (fi >= e.x) break;
+        vec3 k = sampleDeck(tex, fit, clip, rep, p - step * fi);
+        if (e.w > 0.001) k = hueSat(k, fract(e.w * fi), 1.0);
+        k *= 1.0 - fi / e.x;
+        c = 1.0 - (1.0 - c) * (1.0 - k);
+    }
+    return c;
+}
+
 vec3 decks(vec2 p) {
     vec3 a = hasA > 0.5 ? deck(texA, fitA, clipA, repA, glA, p) : vec3(0.0);
     vec3 b = hasB > 0.5 ? deck(texB, fitB, clipB, repB, glB, p) : vec3(0.0);
+    if (hasA > 0.5 && ecoA.x > 1.5) a = echo(texA, fitA, clipA, repA, ecoA, p, a);
+    if (hasB > 0.5 && ecoB.x > 1.5) b = echo(texB, fitB, clipB, repB, ecoB, p, b);
     return mix(a, b, xfade);
 }
 
@@ -169,6 +187,12 @@ GLITCH_UNIFORMS = (("rgbSplit", "rgb", 0.0), ("tracking", "tracking", 0.0), ("hu
                    ("saturation", "sat", 1.0), ("time", "time", 0.0))
 
 
+def clip_echo(fx):
+    """Eco del clip para el shader: (copias, corrimiento x, corrimiento y, tono por copia)."""
+    return (float(fx.get("eco_n", 1)), float(fx.get("eco_x", 0.3)), float(-fx.get("eco_y", 0.0)),
+            float(fx.get("eco_hue", 0.0)))
+
+
 def clip_glitch(fx):
     """Glitch propio del clip para el shader: (rgb, tracking, tono, saturacion)."""
     return (float(fx.get("g_rgb", 0.0)), float(fx.get("g_trk", 0.0)),
@@ -189,7 +213,7 @@ class OsdCache:
             return None
         from . import osd
         key = (tuple((osd.expand(o.get("text", "")), o.get("pos"), o.get("size"),
-                      tuple(o.get("color") or (1.0, 1.0, 1.0))) for o in layers),
+                      tuple(o.get("color") or (1.0, 1.0, 1.0)), tuple(o.get("echo") or ())) for o in layers),
                round(s["screen_aspect"], 2))
         if key != self.key:
             if not layers:
@@ -292,6 +316,8 @@ class GLRenderer:
         for k in "AB":
             if "rep" + k in p:
                 p["rep" + k].value = float(s["decks"][k]["fx"].get("rep", 1))
+            if "eco" + k in p:
+                p["eco" + k].value = clip_echo(s["decks"][k]["fx"])
         p["xfade"].value = s["xfade"]
         p["master"].value = s["master"]
         p["tint"].value = s["tint"]
@@ -375,7 +401,7 @@ class GL2Renderer:
         GL.glPixelStorei(GL.GL_UNPACK_ALIGNMENT, 1)
         self.u = {n: GL.glGetUniformLocation(self.prog, n) for n in (
             "texA", "texB", "hasA", "hasB", "fitA", "fitB", "clipA", "clipB", "zoom", "offset", "droste",
-            "zratio", "zmix", "repA", "repB",
+            "zratio", "zmix", "repA", "repB", "ecoA", "ecoB",
             "xfade", "master", "tint", "tintAmount", "strobe", "strobeColor", "texT", "hasT", "texF", "hasF",
             "glA", "glB",
             *[n for n, _, _ in GLITCH_UNIFORMS])}
@@ -442,6 +468,7 @@ class GL2Renderer:
         GL.glUniform1f(u["zmix"], float(s.get("zmix", 0.0)))
         for k in "AB":
             GL.glUniform1f(u["rep" + k], float(s["decks"][k]["fx"].get("rep", 1)))
+            GL.glUniform4f(u["eco" + k], *clip_echo(s["decks"][k]["fx"]))
         GL.glUniform1f(u["xfade"], s["xfade"])
         GL.glUniform1f(u["master"], s["master"])
         GL.glUniform3f(u["tint"], *s["tint"])

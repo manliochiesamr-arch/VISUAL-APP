@@ -24,7 +24,8 @@ def clean_text(d):
     """Ajustes validados de un recurso de texto."""
     out = {"text": "", "pos": "c", "size": 3, "blink": False, "color": [1.0, 1.0, 1.0],
            "fx": False,   # True = recibe los efectos en vivo (zoom, terremoto, glitch, tinte...)
-           "link": None}  # id de un clip: el texto sale solo cuando ese clip esta al aire
+           "link": None,  # id de un clip: el texto sale solo cuando ese clip esta al aire
+           "eco_n": 1, "eco_x": 0.5, "eco_y": 0.0}  # eco: copias corridas que se apagan
     d = d or {}
     out["text"] = str(d.get("text", ""))[:300]
     if d.get("pos") in TEXT_POS:
@@ -37,6 +38,12 @@ def clean_text(d):
     out["blink"] = bool(d.get("blink", False))
     out["fx"] = bool(d.get("fx", False))
     out["link"] = str(d["link"])[:40] if d.get("link") else None
+    try:
+        out["eco_n"] = max(1, min(20, int(round(float(d.get("eco_n", 1))))))
+        out["eco_x"] = max(-1.0, min(1.0, float(d.get("eco_x", 0.5))))
+        out["eco_y"] = max(-1.0, min(1.0, float(d.get("eco_y", 0.0))))
+    except (TypeError, ValueError):
+        pass
     col = d.get("color")
     if isinstance(col, (list, tuple)) and len(col) == 3:
         try:
@@ -266,7 +273,8 @@ class Library:
                 t = c["text"]
                 on = bool(t["text"].strip()) and (not t["blink"] or (beats % 1.0) < 0.6)
                 out.append({"text": t["text"], "pos": t["pos"], "size": t["size"], "on": on,
-                            "color": tuple(t["color"]), "fx": t.get("fx", False)})
+                            "color": tuple(t["color"]), "fx": t.get("fx", False),
+                            "echo": (t.get("eco_n", 1), round(t.get("eco_x", 0.5), 2), round(t.get("eco_y", 0.0), 2))})
         return out
 
     def _save_later(self):

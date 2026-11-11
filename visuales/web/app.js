@@ -45,7 +45,8 @@ class Fader {
     if (this.pending === null) return;
     const v = this.pending; this.pending = null;
     const d = this.el.dataset;
-    if (d.clip) send('clipfx', { deck: clipDeck(), [d.clip]: v });
+    if (d.clip) send('clipfx', { deck: clipDeck(), [d.clip]: d.clip === 'rep' || d.clip === 'eco_n' ? Math.round(v) : v });
+    else if (d.text) tsend({ [d.text]: d.text === 'eco_n' ? Math.round(v) : v });
     else if (d.key) send(d.cmd, { [d.key]: v });
     else if (d.deck) send(d.cmd, { deck: d.deck, value: v });
     else send(d.cmd, { value: v });
@@ -511,6 +512,8 @@ function renderTextPanel() {
   $('#t-on').classList.toggle('on', on); $('#t-blink').classList.toggle('on', c.text.blink);
   $$('#t-colors button').forEach((b) => b.classList.toggle('on', b.dataset.c === c.text.color.join(',')));
   textPreview(pt, c.text, true);
+  setFader('f-teco', c.text.eco_n || 1); $('#v-teco').textContent = c.text.eco_n || 1;
+  setFader('f-tecox', c.text.eco_x ?? 0.5); setFader('f-tecoy', c.text.eco_y || 0);
 }
 $$('#cfit button').forEach((b) => b.onclick = () => send('clipfx', { deck: clipDeck(), fit: b.dataset.v }));
 $('#c-speed1').onclick = () => send('clipfx', { deck: clipDeck(), speed: 1 });
@@ -552,6 +555,8 @@ function renderClipPanel() {
   if (isSolid) $$('#tab-clip .solidonly').forEach((el) => { el.hidden = false; });
   if (isGen || isSolid) setFader('f-chue', fx.hue || 0);
   if (isGen) setFader('f-cdetail', fx.detail ?? 0.5);
+  setFader('f-ceco', fx.eco_n || 1); $('#v-ceco').textContent = fx.eco_n || 1;
+  setFader('f-cecox', fx.eco_x ?? 0.3); setFader('f-cecoy', fx.eco_y || 0); setFader('f-cecoh', fx.eco_hue || 0);
   setFader('f-crep', fx.rep || 1); $('#v-crep').textContent = `${fx.rep || 1}×${fx.rep || 1}`;
   setFader('f-cg-rgb', fx.g_rgb || 0); setFader('f-cg-trk', fx.g_trk || 0);
   setFader('f-cg-hue', fx.g_hue || 0); setFader('f-cg-sat', fx.g_sat ?? 1);

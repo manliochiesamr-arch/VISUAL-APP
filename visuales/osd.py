@@ -113,15 +113,49 @@ def canvas_size(screen_aspect):
 def render_layers(layers, screen_aspect=4 / 3):
     """Varias capas [(texto, lugar, tamano[, color])] en un solo lienzo. None si no hay nada que mostrar."""
     img = None
-    for text, pos, size, *col in layers:
-        color = col[0] if col and col[0] else (1.0, 1.0, 1.0)
-        img = render(text, pos, size, screen_aspect, color=color, img=img) if text else img
+    for text, pos, size, *more in layers:
+        color = more[0] if more and more[0] else (1.0, 1.0, 1.0)
+        echo = more[1] if len(more) > 1 and more[1] else None
+        img = render(text, pos, size, screen_aspect, color=color, img=img, echo=echo) if text else img
     return img
 
 
-def render(text, pos="tl", size=2, screen_aspect=4 / 3, color=(1.0, 1.0, 1.0), img=None):
+def _shift(a, dx, dy):
+    """Corre un lienzo dx, dy pixeles (lo que sale se pierde, lo que entra es transparente)."""
+    out = np.zeros_like(a)
+    H, W = a.shape[:2]
+    if abs(dx) >= W or abs(dy) >= H:
+        return out
+    ys, yd = (slice(0, H - dy), slice(dy, H)) if dy >= 0 else (slice(-dy, H), slice(0, H + dy))
+    xs, xd = (slice(0, W - dx), slice(dx, W)) if dx >= 0 else (slice(-dx, W), slice(0, W + dx))
+    out[yd, xd] = a[ys, xs]
+    return out
+
+
+def _over(dst, src, k=1.0):
+    """src encima de dst (RGBA), con opacidad extra k."""
+    a = src[..., 3:4] * k
+    dst[..., :3] = src[..., :3] * a + dst[..., :3] * (1 - a)
+    dst[..., 3:4] = a + dst[..., 3:4] * (1 - a)
+
+
+def render(text, pos="tl", size=2, screen_aspect=4 / 3, color=(1.0, 1.0, 1.0), img=None, echo=None):
     """Lienzo RGBA float32 (alto, ancho, 4) con el texto. None si no hay texto.
-    Con img se dibuja encima de un lienzo existente (capas)."""
+    Con img se dibuja encima de un lienzo existente (capas).
+    echo = (copias, x, y): copias corridas detras del texto que se van apagando."""
+    if echo and int(echo[0]) > 1:
+        layer = render(text, pos, size, screen_aspect, color)
+        if layer is None:
+            return img
+        if img is None:
+            img = np.zeros_like(layer)
+        n, ex, ey = int(echo[0]), float(echo[1]), float(echo[2])
+        s = max(1, min(4, int(size)))
+        for i in range(n - 1, 0, -1):  # de la mas lejana a la mas cercana
+            dx, dy = int(round(ex * 4 * s * i)), int(round(-ey * 4 * s * i))
+            _over(img, _shift(layer, dx, dy), 0.85 * (1 - i / n))
+        _over(img, layer)
+        return img
     text = normalize(expand(text or "")).strip("\n")
     if not text.strip():
         return img

@@ -12,7 +12,8 @@ DEFAULT_FX = {"fit": "fit", "zoom": 1.0, "panx": 0.0, "pany": 0.0, "speed": 1.0,
               "hue": 0.0, "detail": 0.5,   # hue/detail: generadores (hue tambien color del solido)
               "sat": 1.0, "bright": 1.0,   # solo para los solidos de color
               "g_rgb": 0.0, "g_trk": 0.0, "g_hue": 0.0, "g_sat": 1.0,  # glitch propio del clip
-              "rep": 1}  # repeticion: copias por lado (mosaico)
+              "rep": 1,  # repeticion: copias por lado (mosaico)
+              "eco_n": 1, "eco_x": 0.3, "eco_y": 0.0, "eco_hue": 0.0}  # eco: copias corridas
 
 
 OSD_POS = ("tl", "t", "tr", "l", "c", "r", "bl", "b", "br")
@@ -28,13 +29,15 @@ def clean_fx(fx):
     fx = fx or {}
     if fx.get("fit") in FITS:
         out["fit"] = fx["fit"]
-    try:
-        out["rep"] = max(1, min(20, int(round(float(fx.get("rep", 1))))))
-    except (TypeError, ValueError):
-        pass
+    for k in ("rep", "eco_n"):
+        try:
+            out[k] = max(1, min(20, int(round(float(fx.get(k, 1))))))
+        except (TypeError, ValueError):
+            pass
     for k, lo, hi in (("zoom", 0.25, 4.0), ("panx", -1.0, 1.0), ("pany", -1.0, 1.0), ("speed", 0.0, 4.0),
                       ("hue", 0.0, 1.0), ("detail", 0.0, 1.0), ("sat", 0.0, 1.0), ("bright", 0.0, 1.0),
-                      ("g_rgb", 0.0, 1.0), ("g_trk", 0.0, 1.0), ("g_hue", 0.0, 1.0), ("g_sat", 0.0, 2.0)):
+                      ("g_rgb", 0.0, 1.0), ("g_trk", 0.0, 1.0), ("g_hue", 0.0, 1.0), ("g_sat", 0.0, 2.0),
+                      ("eco_x", -1.0, 1.0), ("eco_y", -1.0, 1.0), ("eco_hue", 0.0, 1.0)):
         if k in fx:
             try:
                 out[k] = max(lo, min(hi, float(fx[k])))

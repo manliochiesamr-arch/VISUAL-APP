@@ -76,7 +76,12 @@
     <div class="row vid"><span class="lbl w">Posición ↔</span><div class="fader center" id="f-cpanx" data-clip="panx" data-min="-1" data-max="1"></div></div>
     <div class="row vid"><span class="lbl w">Posición ↕</span><div class="fader center" id="f-cpany" data-clip="pany" data-min="-1" data-max="1"></div></div>
     <div class="row vid"><span class="lbl w">Velocidad <i id="v-cspeed">1.00x</i></span><div class="fader" id="f-cspeed" data-clip="speed" data-max="3"></div></div>
-    <div class="row vid"><span class="lbl w">Repetir <i id="v-crep">1×1</i></span><div class="fader" id="f-crep" data-clip="rep" data-min="1" data-max="20"></div></div>
+    <h3 class="sub">Eco (copias que se corren y se apagan)</h3>
+    <div class="row"><span class="lbl w">Copias <i id="v-ceco">1</i></span><div class="fader" id="f-ceco" data-clip="eco_n" data-min="1" data-max="20"></div></div>
+    <div class="row"><span class="lbl w">Hacia ↔</span><div class="fader center" id="f-cecox" data-clip="eco_x" data-min="-1" data-max="1"></div></div>
+    <div class="row"><span class="lbl w">Hacia ↕</span><div class="fader center" id="f-cecoy" data-clip="eco_y" data-min="-1" data-max="1"></div></div>
+    <div class="row"><span class="lbl w">Color</span><div class="fader hue" id="f-cecoh" data-clip="eco_hue"></div></div>
+    <div class="row vid"><span class="lbl w">Mosaico <i id="v-crep">1×1</i></span><div class="fader" id="f-crep" data-clip="rep" data-min="1" data-max="20"></div></div>
     <div class="row solidonly"><div class="swatches" id="c-swatches"></div></div>
     <div class="row genonly solidonly"><span class="lbl w">Color</span><div class="fader hue" id="f-chue" data-clip="hue"></div></div>
     <div class="row solidonly"><span class="lbl w">Saturación</span><div class="fader" id="f-csat" data-clip="sat"></div></div>
@@ -110,6 +115,10 @@
         <button id="t-on" class="toggle wide">Al aire</button>
         <button id="t-blink" class="toggle wide">Parpadeo (beat)</button>
       </div>
+      <h3 class="sub">Eco</h3>
+      <div class="row"><span class="lbl w">Copias <i id="v-teco">1</i></span><div class="fader" id="f-teco" data-text="eco_n" data-min="1" data-max="20"></div></div>
+      <div class="row"><span class="lbl w">Hacia ↔</span><div class="fader center" id="f-tecox" data-text="eco_x" data-min="-1" data-max="1"></div></div>
+      <div class="row"><span class="lbl w">Hacia ↕</span><div class="fader center" id="f-tecoy" data-text="eco_y" data-min="-1" data-max="1"></div></div>
       <div class="row"><button id="t-fx" class="toggle wide">Recibe FX en vivo (zoom, terremoto, glitch, tinte)</button></div>
       <div class="row"><span class="lbl w">Sale con</span><select id="t-link" class="wide"></select></div>
       <div class="row"><button class="small wide" id="t-ren">✎ Nombre</button><button class="small wide" id="t-alloff">Apagar todos los textos</button></div>
