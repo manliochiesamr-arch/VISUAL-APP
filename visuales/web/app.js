@@ -96,6 +96,7 @@ function onState(s) {
     $$('#osd-layer button').forEach((b, i) => b.classList.toggle('lit', !!(s.osd[i] && s.osd[i].on)));
   }
   $('#quake').classList.toggle('on', s.quake);
+  $('#beat-fx').classList.toggle('on', !!s.beat_fx);
   setFader('f-quake', s.quake_amount);
   setFader('f-zoom', s.zoom); $('#v-zoom').textContent = s.zoom.toFixed(1) + 'x';
   segOn('#screen', s.screen); segOn('#zoom-mode', s.zoom_mode);
@@ -478,6 +479,7 @@ $('#blackout').onclick = () => send('blackout', { value: !(state && state.blacko
 $('#go').onclick = () => send('go');
 $('#cut').onclick = () => send('cut');
 $('#resync').onclick = () => send('resync');
+$('#beat-fx').onclick = () => send('beat_fx', { on: !(state && state.beat_fx) });
 $('#bpm-plus').onclick = () => send('bpm', { value: state.bpm + 1 });
 $('#bpm-minus').onclick = () => send('bpm', { value: state.bpm - 1 });
 $('#bpm-half').onclick = () => send('bpm', { value: state.bpm / 2 });
@@ -670,7 +672,7 @@ $('#mic').onclick = async () => {
   const sp = mic.ctx.createAnalyser(); sp.fftSize = 1024; sp.smoothingTimeConstant = 0.4;
   sp.minDecibels = -95; sp.maxDecibels = -25;
   src.connect(sp); mic.sp = sp; mic.spBuf = new Uint8Array(sp.frequencyBinCount);
-  mic.an = an; mic.buf = new Float32Array(an.fftSize); mic.on = true; mic.onsets = []; mic.history = [];
+  mic.an = an; mic.buf = new Float32Array(an.fftSize); mic.on = true; mic.onsets = []; mic.history = []; mic.locked = false;
   $('#mic').classList.add('on'); $('#mic-hint').textContent = 'Escuchando… acercá el teléfono al bombo.';
   micLoop();
 };
@@ -686,7 +688,10 @@ function micLoop() {
   const now = performance.now();
   mic.avg = mic.avg * 0.97 + e * 0.03;
   let onset = false;
-  if (e > mic.avg * 1.5 && e > 0.01 && now - mic.last > 280) { onset = true; mic.last = now; mic.onsets.push(now); }
+  if (e > mic.avg * 1.5 && e > 0.01 && now - mic.last > 280) {
+    onset = true; mic.last = now; mic.onsets.push(now);
+    if (mic.locked) send('onset');  // la Pi engancha el beat a este golpe (de a poco)
+  }
   mic.onsets = mic.onsets.filter((t) => now - t < 8000);
   if (onset && mic.onsets.length >= 6) estimateBpm(now);
   if (now - (mic.specT || 0) > 50) { mic.specT = now; sendSpectrum(); }
@@ -709,7 +714,12 @@ function estimateBpm(now) {
   if (stable && now - mic.sent > 4000) {
     mic.sent = now;
     const avg = mic.history.reduce((a, b) => a + b, 0) / mic.history.length;
-    send('bpm', { value: avg, resync: true });  // este onset pasa a ser el beat 1
+    // la primera vez (o si el tempo cambio de verdad) este golpe pasa a ser el beat 1;
+    // despues solo se ajusta el BPM y la fase la corrigen los golpes de a poco
+    const jump = !mic.locked || Math.abs(avg - (state ? state.bpm : 0)) > 3;
+    send('bpm', { value: avg, resync: jump });
+    mic.locked = true;
+    $('#mic-hint').textContent = `🎤 ${Math.round(avg)} BPM · efectos enganchados a la música`;
   }
 }
 function drawMeter(e, onset) {
