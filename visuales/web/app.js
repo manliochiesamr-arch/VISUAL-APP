@@ -557,7 +557,7 @@ function renderClipPanel() {
   if (isSolid) $$('#tab-clip .solidonly').forEach((el) => { el.hidden = false; });
   if (isGen || isSolid) setFader('f-chue', fx.hue || 0);
   if (isGen) setFader('f-cdetail', fx.detail ?? 0.5);
-  setFader('f-ceco', fx.eco_n || 1); $('#v-ceco').textContent = fx.eco_n || 1;
+  setFader('f-ceco', fx.eco_n || 1); $('#v-ceco').textContent = (fx.eco_n || 1) - 1;
   setFader('f-cecox', fx.eco_x ?? 0.3); setFader('f-cecoy', fx.eco_y || 0); setFader('f-cecoh', fx.eco_hue || 0);
   setFader('f-crep', fx.rep || 1); $('#v-crep').textContent = `${fx.rep || 1}×${fx.rep || 1}`;
   setFader('f-cg-rgb', fx.g_rgb || 0); setFader('f-cg-trk', fx.g_trk || 0);

@@ -29,9 +29,9 @@ def clean_fx(fx):
     fx = fx or {}
     if fx.get("fit") in FITS:
         out["fit"] = fx["fit"]
-    for k in ("rep", "eco_n"):
+    for k, hi in (("rep", 20), ("eco_n", 4)):  # eco de clips: la imagen + 3 copias como maximo
         try:
-            out[k] = max(1, min(20, int(round(float(fx.get(k, 1))))))
+            out[k] = max(1, min(hi, int(round(float(fx.get(k, 1))))))
         except (TypeError, ValueError):
             pass
     for k, lo, hi in (("zoom", 0.25, 4.0), ("panx", -1.0, 1.0), ("pany", -1.0, 1.0), ("speed", 0.0, 4.0),

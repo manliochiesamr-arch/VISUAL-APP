@@ -125,18 +125,22 @@ vec3 deck(sampler2D tex, vec2 fit, vec3 clip, float rep, vec4 g, vec2 p) {
 }
 
 #ifdef ECHO
-// eco: copias corridas que se van apagando (y cambiando de tono), fundidas en modo "trama" (screen)
+// eco: hasta 3 copias corridas, promediadas con peso decreciente (como una exposicion larga):
+// todas se ven dentro de la imagen sin subir el brillo. Max 3 copias: cada una es una lectura mas.
 vec3 echo(sampler2D tex, vec2 fit, vec3 clip, float rep, vec4 e, vec2 p, vec3 c) {
     vec2 step = e.yz * 0.06;
-    for (int i = 1; i < 20; i++) {
+    vec3 acc = c;
+    float wsum = 1.0;
+    for (int i = 1; i < 4; i++) {
         float fi = float(i);
         if (fi >= e.x) break;
         vec3 k = sampleDeck(tex, fit, clip, rep, p - step * fi);
         if (e.w > 0.001) k = hueSat(k, fract(e.w * fi), 1.0);
-        k *= 1.0 - fi / e.x;
-        c = 1.0 - (1.0 - c) * (1.0 - k);
+        float w = 1.0 - fi / e.x * 0.75;
+        acc += k * w;
+        wsum += w;
     }
-    return c;
+    return acc / wsum;
 }
 #endif
 
