@@ -35,7 +35,11 @@ uniform vec3 clipA;     // ajustes del clip: zoom, pan x, pan y
 uniform vec3 clipB;
 uniform float zoom;
 uniform vec2 offset;    // terremoto
-uniform float droste;   // 1 = zoom infinito (copias anidadas del cuadro)
+uniform float droste;   // 1 = zoom infinito: bordes en espejo (sin recuadros ni negro)
+uniform float zratio;   // zoom infinito: escala de la segunda capa respecto de la primera
+uniform float zmix;     // zoom infinito: cuanto se ve la segunda capa (fundido entre escalas)
+uniform float repA;     // repeticion del clip: copias por lado (1 = normal)
+uniform float repB;
 uniform float xfade;
 uniform float master;
 uniform vec3 tint;
@@ -54,15 +58,15 @@ uniform float hasF;
 uniform vec4 glA;        // glitch propio de cada clip: rgb, tracking, tono, saturacion
 uniform vec4 glB;
 
-vec3 sampleDeck(sampler2D tex, vec2 fit, vec3 clip, vec2 p) {
+vec3 sampleDeck(sampler2D tex, vec2 fit, vec3 clip, float rep, vec2 p) {
     vec2 q = (p / clip.x + clip.yz) / fit;
-    if (droste > 0.5) {
-        float m = max(abs(q.x), abs(q.y)) * 2.0;
-        float k = clamp(floor(-log2(max(m, 1e-4))), -8.0, 12.0);
-        q *= exp2(k);
-    }
     vec2 tc = q + 0.5;
-    if (tc.x < 0.0 || tc.x > 1.0 || tc.y < 0.0 || tc.y > 1.0) return vec3(0.0);
+    if (droste > 0.5) {
+        tc = 1.0 - abs(1.0 - mod(tc, 2.0));                  // espejo: la imagen sigue sin bordes
+    } else if (tc.x < 0.0 || tc.x > 1.0 || tc.y < 0.0 || tc.y > 1.0) {
+        return vec3(0.0);
+    }
+    if (rep > 1.5) tc = fract(tc * rep);                      // mosaico rep x rep
     return texture(tex, tc).rgb;
 }
 
@@ -96,26 +100,33 @@ vec3 hueSat(vec3 c, float h, float s) {
 }
 
 // un deck con su glitch propio (el del clip)
-vec3 deck(sampler2D tex, vec2 fit, vec3 clip, vec4 g, vec2 p) {
+vec3 deck(sampler2D tex, vec2 fit, vec3 clip, float rep, vec4 g, vec2 p) {
     float band = 0.0;
     if (g.y > 0.001) p.x += g.y * trackDx(band);
     vec3 c;
     if (g.x > 0.001) {
         float dx = g.x * 0.035;
-        c = vec3(sampleDeck(tex, fit, clip, p + vec2(dx, 0.0)).r, sampleDeck(tex, fit, clip, p).g,
-                 sampleDeck(tex, fit, clip, p - vec2(dx, 0.0)).b);
+        c = vec3(sampleDeck(tex, fit, clip, rep, p + vec2(dx, 0.0)).r, sampleDeck(tex, fit, clip, rep, p).g,
+                 sampleDeck(tex, fit, clip, rep, p - vec2(dx, 0.0)).b);
     } else {
-        c = sampleDeck(tex, fit, clip, p);
+        c = sampleDeck(tex, fit, clip, rep, p);
     }
     if (g.y > 0.001) c = mix(c, vec3(hash(uv * 400.0 + time)), band * g.y * 0.6);
     if (g.z > 0.001 || abs(g.w - 1.0) > 0.001) c = hueSat(c, g.z, g.w);
     return c;
 }
 
+vec3 decks(vec2 p) {
+    vec3 a = hasA > 0.5 ? deck(texA, fitA, clipA, repA, glA, p) : vec3(0.0);
+    vec3 b = hasB > 0.5 ? deck(texB, fitB, clipB, repB, glB, p) : vec3(0.0);
+    return mix(a, b, xfade);
+}
+
 vec3 scene(vec2 p) {
-    vec3 a = hasA > 0.5 ? deck(texA, fitA, clipA, glA, p) : vec3(0.0);
-    vec3 b = hasB > 0.5 ? deck(texB, fitB, clipB, glB, p) : vec3(0.0);
-    vec3 c = mix(a, b, xfade);
+    vec3 c = decks(p);
+    if (zmix > 0.001) {                                      // zoom infinito: se funde con la escala siguiente
+        c = mix(c, decks((p - offset) * zratio + offset), zmix);
+    }
     if (hasF > 0.5) {                                        // texto con efectos: se mueve con la imagen
         vec2 tf = p + 0.5;
         if (tf.x >= 0.0 && tf.x <= 1.0 && tf.y >= 0.0 && tf.y <= 1.0) {
@@ -275,6 +286,12 @@ class GLRenderer:
         p["zoom"].value = s["zoom"]
         p["offset"].value = s["offset"]
         p["droste"].value = 1.0 if s["droste"] else 0.0
+        for name in ("zratio", "zmix"):
+            if name in p:
+                p[name].value = float(s.get(name, 1.0 if name == "zratio" else 0.0))
+        for k in "AB":
+            if "rep" + k in p:
+                p["rep" + k].value = float(s["decks"][k]["fx"].get("rep", 1))
         p["xfade"].value = s["xfade"]
         p["master"].value = s["master"]
         p["tint"].value = s["tint"]
@@ -358,6 +375,7 @@ class GL2Renderer:
         GL.glPixelStorei(GL.GL_UNPACK_ALIGNMENT, 1)
         self.u = {n: GL.glGetUniformLocation(self.prog, n) for n in (
             "texA", "texB", "hasA", "hasB", "fitA", "fitB", "clipA", "clipB", "zoom", "offset", "droste",
+            "zratio", "zmix", "repA", "repB",
             "xfade", "master", "tint", "tintAmount", "strobe", "strobeColor", "texT", "hasT", "texF", "hasF",
             "glA", "glB",
             *[n for n, _, _ in GLITCH_UNIFORMS])}
@@ -420,6 +438,10 @@ class GL2Renderer:
         GL.glUniform1f(u["zoom"], s["zoom"])
         GL.glUniform2f(u["offset"], *s["offset"])
         GL.glUniform1f(u["droste"], 1.0 if s["droste"] else 0.0)
+        GL.glUniform1f(u["zratio"], float(s.get("zratio", 1.0)))
+        GL.glUniform1f(u["zmix"], float(s.get("zmix", 0.0)))
+        for k in "AB":
+            GL.glUniform1f(u["rep" + k], float(s["decks"][k]["fx"].get("rep", 1)))
         GL.glUniform1f(u["xfade"], s["xfade"])
         GL.glUniform1f(u["master"], s["master"])
         GL.glUniform3f(u["tint"], *s["tint"])

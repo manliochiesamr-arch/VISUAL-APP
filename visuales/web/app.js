@@ -198,11 +198,6 @@ const textClip = () => clips.find((x) => x.id === editText && x.kind === 'text')
 const tsend = (data) => { if (editText) send('textclip', { clip: editText, ...data }); };
 let tTimer = null;
 $('#t-text').oninput = (e) => { clearTimeout(tTimer); tTimer = setTimeout(() => tsend({ text: e.target.value }), 250); };
-$$('#t-quick button').forEach((b) => b.onclick = () => {
-  const ti = $('#t-text');
-  ti.value = (ti.value ? ti.value + ' ' : '') + b.dataset.t;
-  tsend({ text: ti.value });
-});
 $$('#t-pos button').forEach((b) => b.onclick = () => tsend({ pos: b.dataset.v }));
 $$('#t-size button').forEach((b) => b.onclick = () => tsend({ size: parseInt(b.dataset.v, 10) }));
 $('#t-blink').onclick = () => { const c = textClip(); if (c) tsend({ blink: !c.text.blink }); };
@@ -238,8 +233,32 @@ for (const [h, s, v] of SOLID_COLORS) {
   b.onclick = () => send('clipfx', { deck: clipDeck(), hue: h, sat: s, bright: v });
   $('#c-swatches').appendChild(b);
 }
+// cuadro para elegir el color de un solido nuevo
+function askColor() {
+  return new Promise((resolve) => {
+    const bg = document.createElement('div');
+    bg.className = 'ask';
+    bg.innerHTML = '<form><b>Color del sólido</b><div class="swatches big"></div>' +
+      '<p class="hint">Después lo ajustás fino en la pestaña Clip.</p>' +
+      '<div class="row"><button type="button" class="wide">Cancelar</button></div></form>';
+    const box = bg.querySelector('.swatches');
+    for (const [h, s, v] of SOLID_COLORS) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.style.background = solidCss({ hue: h, sat: s, bright: v });
+      b.onclick = () => { bg.remove(); resolve({ hue: h, sat: s, bright: v }); };
+      box.appendChild(b);
+    }
+    bg.querySelector('.row button').onclick = () => { bg.remove(); resolve(null); };
+    document.body.appendChild(bg);
+  });
+}
 async function newResource(kind) {
   let body = { kind };
+  if (kind === 'solid') {
+    const fx = await askColor();
+    if (!fx) return;
+    body.fx = fx;
+  }
   if (kind === 'text') {
     const t = await askText('Texto (después lo editás en la pestaña Clip)', '');
     if (!t) return;
@@ -285,6 +304,34 @@ $('#red-add').onclick = async () => {
   setRed({ ssid, clave: clave || '' });
 };
 $('nav button[data-tab=lib]').addEventListener('click', loadRed);
+// ---------------- estado de la Pi ----------------
+async function loadPi() {
+  let s;
+  try { s = await fetch('/api/sistema').then((r) => r.json()); } catch { return; }
+  const cells = [];
+  const cell = (k, v, bad) => cells.push(`<div class="${bad ? 'bad' : ''}"><small>${k}</small><b>${v}</b></div>`);
+  if (s.fps != null) cell('Video', `${s.fps} fps`, s.fps < 20);
+  if (s.cpu != null) cell('CPU', `${s.cpu}%`, s.cpu > 85);
+  if (s.ram_total) cell('RAM', `${s.ram_usada} / ${s.ram_total} MB`, s.ram_usada / s.ram_total > 0.85);
+  if (s.temp != null) cell('Temp.', `${s.temp} °C`, s.temp >= 75);
+  if (s.convirtiendo) cell('Convirtiendo', `${s.convirtiendo} video${s.convirtiendo > 1 ? 's' : ''}`, false);
+  $('#pi-stats').innerHTML = cells.join('') || 'Sin datos';
+  const warn = [];
+  if (s.bajo_voltaje) warn.push('⚠ Le falta corriente AHORA: usá la fuente de 2.5 A, no un USB de PC.');
+  else if (s.bajo_voltaje_antes) warn.push('Desde que prendió, en algún momento le faltó corriente.');
+  if (s.frenada) warn.push('⚠ La Pi está bajando su velocidad (corriente o temperatura).');
+  if (s.temp >= 80) warn.push('⚠ Muy caliente: ventilala.');
+  $('#pi-hint').textContent = warn.join(' ') || (s.render ? `Render: ${s.render}. Video ideal: 25 fps o más.` : '');
+  const bad = !!(s.bajo_voltaje || s.frenada || s.temp >= 80 || (s.fps != null && s.fps < 15));
+  $('#pi-warn').hidden = !bad;
+}
+$('#pi-warn').onclick = () => { $('nav button[data-tab=lib]').click(); setTimeout(() => $('#pi').scrollIntoView(), 50); };
+setInterval(() => {
+  // en Biblioteca se actualiza seguido; si no, cada tanto para el aviso del encabezado
+  const libOn = $('#tab-lib').classList.contains('on');
+  if (libOn || Date.now() % 10000 < 2000) loadPi();
+}, 2000);
+$('nav button[data-tab=lib]').addEventListener('click', loadPi);
 $('#new-text').onclick = () => newResource('text');
 
 function renderLibrary() {
@@ -418,7 +465,10 @@ function uploadOne(f) {
 }
 
 // ---------------- botones ----------------
-$$('nav button').forEach((b) => b.onclick = () => {
+$$('nav button').forEach((btn) => btn.onclick = () => {
+  let b = btn;
+  // en pantalla ancha Biblioteca se abre encima: tocarla de nuevo la cierra
+  if (b.dataset.tab === 'lib' && b.classList.contains('on') && matchMedia('(min-width: 1000px)').matches) b = $('nav button[data-tab=show]');
   $$('nav button').forEach((x) => x.classList.toggle('on', x === b));
   $$('.tab').forEach((t) => t.classList.toggle('on', t.id === 'tab-' + b.dataset.tab));
 });
@@ -502,6 +552,7 @@ function renderClipPanel() {
   if (isSolid) $$('#tab-clip .solidonly').forEach((el) => { el.hidden = false; });
   if (isGen || isSolid) setFader('f-chue', fx.hue || 0);
   if (isGen) setFader('f-cdetail', fx.detail ?? 0.5);
+  setFader('f-crep', fx.rep || 1); $('#v-crep').textContent = `${fx.rep || 1}×${fx.rep || 1}`;
   setFader('f-cg-rgb', fx.g_rgb || 0); setFader('f-cg-trk', fx.g_trk || 0);
   setFader('f-cg-hue', fx.g_hue || 0); setFader('f-cg-sat', fx.g_sat ?? 1);
   $('#v-cg-sat').textContent = Math.round((fx.g_sat ?? 1) * 100) + '%';

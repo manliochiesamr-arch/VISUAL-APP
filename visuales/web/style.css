@@ -144,3 +144,25 @@ h3.sub { font-size: 13px; margin: 14px 0 4px; color: var(--dim); }
 #red { margin-top: 16px; }
 #red .seg { margin: 6px 0; }
 #red .hint b { font-size: inherit; }
+.pistats { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; margin: 6px 0; }
+.pistats div { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
+.pistats small { display: block; color: var(--dim); font-size: 11px; }
+.pistats b { font-variant-numeric: tabular-nums; }
+.pistats .bad { border-color: var(--live); }
+.pistats .bad b { color: var(--live); }
+.piwarn { padding: 6px 9px; background: var(--live); border: 0; font-weight: 800; }
+.ask .swatches.big { grid-template-columns: repeat(5, 1fr); gap: 10px; margin: 12px 0; }
+
+/* ---------- pantalla ancha (PC / tablet horizontal): Show, Clip y En vivo a la vez ---------- */
+@media (min-width: 1000px) {
+  nav button[data-tab=show], nav button[data-tab=clip], nav button[data-tab=fx] { display: none; }
+  nav { justify-content: flex-end; }
+  nav button[data-tab=lib] { flex: 0 0 auto; padding: 8px 24px; }
+  main { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr); }
+  #tab-show, #tab-clip, #tab-fx { display: block; height: 100%; border-right: 1px solid var(--line); }
+  #tab-show { display: flex; flex-direction: column; padding: 0; }
+  #tab-lib.on { position: absolute; inset: 0; z-index: 5; background: var(--bg); }
+  #tab-lib > * { max-width: 900px; margin-left: auto; margin-right: auto; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .preview { width: 100%; }
+}

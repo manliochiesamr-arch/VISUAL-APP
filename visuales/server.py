@@ -193,7 +193,7 @@ class Server:
         """Crea un solido de color o un texto y lo suma al show activo."""
         data = await request.json()
         try:
-            clip = self.library.create(data.get("kind"), data.get("name"), data.get("text"))
+            clip = self.library.create(data.get("kind"), data.get("name"), data.get("text"), data.get("fx"))
         except ValueError as e:
             return web.json_response({"ok": False, "error": str(e)})
         if self.shows.add_to_active(clip["id"]):
@@ -253,6 +253,53 @@ class Server:
             log.info("modo de red -> %s", data["modo"])
         return web.json_response({"ok": True})
 
+    # ---------- monitor de la placa ----------
+    def _sistema(self):
+        import os
+        import shutil
+        import subprocess
+        out = dict(getattr(self, "stats", {}) or {})
+        try:  # CPU: diferencia contra la consulta anterior
+            vals = [int(x) for x in open("/proc/stat").readline().split()[1:]]
+            idle, total = vals[3] + vals[4], sum(vals)
+            prev = getattr(self, "_cpu_prev", None)
+            self._cpu_prev = (idle, total)
+            if prev and total > prev[1]:
+                out["cpu"] = round(100 * (1 - (idle - prev[0]) / (total - prev[1])))
+        except (OSError, ValueError, IndexError):
+            pass
+        try:
+            mem = {l.split(":")[0]: int(l.split()[1]) for l in open("/proc/meminfo")}
+            out["ram_total"] = round(mem["MemTotal"] / 1024)
+            out["ram_usada"] = round((mem["MemTotal"] - mem["MemAvailable"]) / 1024)
+        except (OSError, KeyError, ValueError):
+            pass
+        try:
+            out["temp"] = round(int(open("/sys/class/thermal/thermal_zone0/temp").read()) / 1000, 1)
+        except (OSError, ValueError):
+            pass
+        try:
+            out["carga"] = round(os.getloadavg()[0], 2)
+            out["nucleos"] = os.cpu_count()
+        except OSError:
+            pass
+        if shutil.which("vcgencmd"):
+            try:
+                t = subprocess.run(["vcgencmd", "get_throttled"], capture_output=True, text=True, timeout=3).stdout
+                v = int(t.strip().split("=")[1], 16)
+                out["bajo_voltaje"] = bool(v & 0x1)
+                out["frenada"] = bool(v & 0x6)          # velocidad limitada (corriente o temperatura)
+                out["bajo_voltaje_antes"] = bool(v & 0x10000)
+                out["frenada_antes"] = bool(v & 0x60000)
+            except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+                pass
+        with self.library.lock:
+            out["convirtiendo"] = sum(1 for c in self.library.clips.values() if c["status"] in ("queued", "processing"))
+        return out
+
+    async def sistema(self, request):
+        return web.json_response(await asyncio.get_running_loop().run_in_executor(None, self._sistema))
+
     async def library_json(self, request):
         return web.json_response({"clips": self.library.list()})
 
@@ -283,6 +330,7 @@ class Server:
         app.router.add_post("/api/clips/{cid}/rename", self.rename_clip)
         app.router.add_post("/api/clips/new", self.new_clip)
         app.router.add_get("/api/red", self.red_get)
+        app.router.add_get("/api/sistema", self.sistema)
         app.router.add_post("/api/red", self.red_set)
         app.router.add_static("/static", WEB)
         app.router.add_static("/thumbs", self.cfg.thumbs_dir)

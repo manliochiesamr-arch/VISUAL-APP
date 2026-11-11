@@ -11,7 +11,8 @@ FITS = ("fit", "fill", "stretch")
 DEFAULT_FX = {"fit": "fit", "zoom": 1.0, "panx": 0.0, "pany": 0.0, "speed": 1.0,
               "hue": 0.0, "detail": 0.5,   # hue/detail: generadores (hue tambien color del solido)
               "sat": 1.0, "bright": 1.0,   # solo para los solidos de color
-              "g_rgb": 0.0, "g_trk": 0.0, "g_hue": 0.0, "g_sat": 1.0}  # glitch propio del clip
+              "g_rgb": 0.0, "g_trk": 0.0, "g_hue": 0.0, "g_sat": 1.0,  # glitch propio del clip
+              "rep": 1}  # repeticion: copias por lado (mosaico)
 
 
 OSD_POS = ("tl", "t", "tr", "l", "c", "r", "bl", "b", "br")
@@ -27,6 +28,10 @@ def clean_fx(fx):
     fx = fx or {}
     if fx.get("fit") in FITS:
         out["fit"] = fx["fit"]
+    try:
+        out["rep"] = max(1, min(20, int(round(float(fx.get("rep", 1))))))
+    except (TypeError, ValueError):
+        pass
     for k, lo, hi in (("zoom", 0.25, 4.0), ("panx", -1.0, 1.0), ("pany", -1.0, 1.0), ("speed", 0.0, 4.0),
                       ("hue", 0.0, 1.0), ("detail", 0.0, 1.0), ("sat", 0.0, 1.0), ("bright", 0.0, 1.0),
                       ("g_rgb", 0.0, 1.0), ("g_trk", 0.0, 1.0), ("g_hue", 0.0, 1.0), ("g_sat", 0.0, 2.0)):
@@ -278,17 +283,21 @@ class Mixer:
             else:
                 scol = tuple(self.tint)
             beats = self.beat.beats(now)
-            zoom, droste = self.zoom, False
+            zoom, droste, zratio, zmix = self.zoom, False, 1.0, 0.0
             if self.zoom_mode != "fixed":
                 ph = (beats / self.zoom_cycle) % 1.0
                 if self.zoom_mode == "pulse":
                     zoom *= 1.0 + 0.35 * (0.5 - 0.5 * math.cos(2 * math.pi * ph))
-                elif self.zoom_mode == "in":
-                    zoom *= 2.0 ** ph
-                    droste = True
                 else:
-                    zoom *= 2.0 ** (1.0 - ph)
-                    droste = True
+                    # zoom infinito: dos escalas del mismo cuadro que se funden. Al final del ciclo
+                    # la segunda capa queda exactamente como empezo la primera: no hay salto.
+                    droste, zmix = True, ph
+                    if self.zoom_mode == "in":
+                        zoom *= 2.0 ** ph
+                        zratio = 2.0
+                    else:
+                        zoom *= 2.0 ** (1.0 - ph)
+                        zratio = 0.5
             offset = (0.0, 0.0)
             if self.quake:
                 rnd = random.Random(int(now * 30))  # 30 sacudidas por segundo
@@ -302,6 +311,8 @@ class Mixer:
                 "zoom": zoom,
                 "offset": offset,
                 "droste": droste,
+                "zratio": zratio,
+                "zmix": zmix,
                 "decks": {k: {"clip": v["clip"], "fx": dict(v["fx"])} for k, v in self.decks.items()},
                 "xfade": self.xfade,
                 "master": self.master * (1.0 - self.blackout_level),

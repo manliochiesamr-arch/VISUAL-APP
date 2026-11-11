@@ -207,7 +207,7 @@ class Library:
         return True
 
     # ---------- recursos: solidos de color y textos ----------
-    def create(self, kind, name=None, text=None):
+    def create(self, kind, name=None, text=None, fx=None):
         """Crea un solido de color o un texto. Devuelve el clip."""
         cid = kind + "-" + uuid.uuid4().hex[:8]
         with self.lock:
@@ -217,6 +217,12 @@ class Library:
             if kind == "solid":
                 clip["name"] = (name or f"Sólido {n}")[:80]
                 clip["fx"] = {"fit": "stretch", "hue": 0.0, "sat": 1.0, "bright": 1.0}
+                if isinstance(fx, dict):
+                    for k in ("hue", "sat", "bright"):
+                        try:
+                            clip["fx"][k] = max(0.0, min(1.0, float(fx.get(k, clip["fx"][k]))))
+                        except (TypeError, ValueError):
+                            pass
             elif kind == "text":
                 clip["text"] = clean_text({"text": text or name or ""})
                 clip["name"] = (name or (text or "").strip().split("\n")[0] or f"Texto {n}")[:80]

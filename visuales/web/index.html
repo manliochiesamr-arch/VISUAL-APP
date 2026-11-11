@@ -20,6 +20,7 @@
   </div>
   <button id="tap" class="tap">TAP</button>
   <span id="conn" class="conn off" title="conexión"></span>
+  <button id="pi-warn" class="piwarn" hidden title="estado de la Pi">⚠</button>
   <button id="blackout" class="blackout">BLACKOUT</button>
 </header>
 
@@ -75,6 +76,7 @@
     <div class="row vid"><span class="lbl w">Posición ↔</span><div class="fader center" id="f-cpanx" data-clip="panx" data-min="-1" data-max="1"></div></div>
     <div class="row vid"><span class="lbl w">Posición ↕</span><div class="fader center" id="f-cpany" data-clip="pany" data-min="-1" data-max="1"></div></div>
     <div class="row vid"><span class="lbl w">Velocidad <i id="v-cspeed">1.00x</i></span><div class="fader" id="f-cspeed" data-clip="speed" data-max="3"></div></div>
+    <div class="row vid"><span class="lbl w">Repetir <i id="v-crep">1×1</i></span><div class="fader" id="f-crep" data-clip="rep" data-min="1" data-max="20"></div></div>
     <div class="row solidonly"><div class="swatches" id="c-swatches"></div></div>
     <div class="row genonly solidonly"><span class="lbl w">Color</span><div class="fader hue" id="f-chue" data-clip="hue"></div></div>
     <div class="row solidonly"><span class="lbl w">Saturación</span><div class="fader" id="f-csat" data-clip="sat"></div></div>
@@ -95,11 +97,6 @@
 
     <div id="text-edit" hidden>
       <div class="row"><textarea id="t-text" rows="2" maxlength="300" placeholder="Escribí el texto (Enter = otra línea)"></textarea></div>
-      <div class="row osd-quick" id="t-quick">
-        <button class="small" data-t="PLAY ▶">PLAY ▶</button><button class="small" data-t="● REC">● REC</button>
-        <button class="small" data-t="PAUSE ❚">PAUSE</button><button class="small" data-t="STOP ■">STOP</button>
-        <button class="small" data-t="{hora}">Hora</button><button class="small" data-t="{fecha}">Fecha</button>
-      </div>
       <div class="row"><span class="lbl w">Lugar</span>
         <div class="posgrid" id="t-pos">
           <button data-v="tl">↖</button><button data-v="t">↑</button><button data-v="tr">↗</button>
@@ -220,6 +217,12 @@
     <div id="uploads"></div>
     <p class="hint" id="free"></p>
     <ul id="liblist" class="liblist"></ul>
+
+    <div class="showbox" id="pi">
+      <div class="row"><b>Estado de la Pi</b></div>
+      <div class="pistats" id="pi-stats">…</div>
+      <p class="hint" id="pi-hint"></p>
+    </div>
 
     <div class="showbox" id="red">
       <div class="row"><b>Red</b></div>

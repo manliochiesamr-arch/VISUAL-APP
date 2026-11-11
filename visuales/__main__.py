@@ -113,8 +113,13 @@ def main():
             renderer = render.create(cfg)
         clock.tick(60)
         frames += 1
-        if now - t_stat >= 10:
-            logging.getLogger("main").info("%.1f fps (%s)", frames / (now - t_stat), renderer.name)
+        if now - t_stat >= 2:
+            fps = frames / (now - t_stat)
+            server.stats = {"fps": round(fps, 1), "render": renderer.name}
+            n_log = getattr(server, "_nlog", 0) + 1
+            server._nlog = n_log
+            if n_log % 5 == 0:  # al log cada 10 s
+                logging.getLogger("main").info("%.1f fps (%s)", fps, renderer.name)
             frames, t_stat = 0, now
         if args.max_seconds and now - t_start > args.max_seconds:
             running = False
