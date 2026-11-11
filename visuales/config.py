@@ -32,6 +32,9 @@ class Config:
     cert_file: str = field(default_factory=lambda: _env("CERT", ""))
     key_file: str = field(default_factory=lambda: _env("KEY", ""))
     renderer: str = field(default_factory=lambda: _env("RENDERER", "auto"))  # auto | gl | sdl
+    # alto interno al que se dibujan los efectos (despues se agranda a la salida). 0 = automatico:
+    # 360 en la Pi 3 (su GPU no llega a 1080p con efectos), resolucion de la salida en el resto
+    render_h: int = field(default_factory=lambda: _env("RENDER_H", 0, int))
     fullscreen: bool = field(default_factory=lambda: _env("FULLSCREEN", True, bool))
     # Solo se aceptan MP4 con video H.264 (evita HEVC/archivos pesados en la Pi)
     # Formatos aceptados: todo se convierte una vez a H.264 liviano al importar

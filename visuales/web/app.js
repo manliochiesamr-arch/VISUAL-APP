@@ -323,7 +323,7 @@ async function loadPi() {
   else if (s.bajo_voltaje_antes) warn.push('Desde que prendió, en algún momento le faltó corriente.');
   if (s.frenada) warn.push('⚠ La Pi está bajando su velocidad (corriente o temperatura).');
   if (s.temp >= 80) warn.push('⚠ Muy caliente: ventilala.');
-  $('#pi-hint').textContent = warn.join(' ') || (s.render ? `Render: ${s.render}. Video ideal: 25 fps o más.` : '');
+  $('#pi-hint').textContent = warn.join(' ') || (s.render ? `Render: ${s.render}${s.res ? ' · ' + s.res : ''}. Video ideal: 25 fps o más.` : '');
   const bad = !!(s.bajo_voltaje || s.frenada || s.temp >= 80 || (s.fps != null && s.fps < 15));
   $('#pi-warn').hidden = !bad;
 }

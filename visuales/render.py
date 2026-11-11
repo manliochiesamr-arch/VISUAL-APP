@@ -401,6 +401,14 @@ class GLRenderer:
         pygame.display.flip()
 
 
+# copia la imagen dibujada a baja resolucion a toda la pantalla
+BLIT2 = """
+#version 120
+varying vec2 uv;
+uniform sampler2D tex;
+void main() { gl_FragColor = texture2D(tex, vec2(uv.x, 1.0 - uv.y)); }
+"""
+
 # GLSL 1.20 (OpenGL 2.1): mismo shader que FRAG, en el dialecto que entiende la Pi 3
 VERT2 = """
 #version 120
@@ -450,6 +458,7 @@ class GL2Renderer:
         for feats in (("TEXT",), ("RGB",), ("TRACK",), ("CLIPGL",), ("ZMIX",), ("ECHO",)):
             self._use(frozenset(feats))
         self._use(frozenset())
+        self._setup_lowres(cfg)
         # textos: limpio (unidad 2) y con efectos (unidad 3)
         self.osd_slots = []
         for unit, has, sampler, fx in ((2, "hasT", "texT", False), (3, "hasF", "texF", True)):
@@ -469,6 +478,44 @@ class GL2Renderer:
                          (GL.GL_TEXTURE_WRAP_S, GL.GL_CLAMP_TO_EDGE), (GL.GL_TEXTURE_WRAP_T, GL.GL_CLAMP_TO_EDGE)):
                 GL.glTexParameteri(GL.GL_TEXTURE_2D, p, v)
             self.tex[k] = {"id": t, "size": None, "serial": -1}
+
+    def _setup_lowres(self, cfg):
+        """Los efectos se dibujan en una imagen chica (ej. 480x360) y despues se agranda a la salida:
+        la GPU de la Pi 3 calcula ~9 veces menos pixeles que a 1080p. Para una tele de tubo sobra."""
+        GL = self.GL
+        W, H = self.size
+        rh = cfg.render_h or (360 if _is_pi3() else 0)
+        self.fbo = None
+        self.res = f"{W}x{H}"
+        if not rh or rh >= H:
+            return
+        rw = max(2, round(W * rh / H))
+        try:
+            self.blit = self._program(VERT2, BLIT2)
+            GL.glUseProgram(self.blit)
+            GL.glUniform1i(GL.glGetUniformLocation(self.blit, "tex"), 4)
+            GL.glActiveTexture(GL.GL_TEXTURE4)
+            self.fbo_tex = GL.glGenTextures(1)
+            GL.glBindTexture(GL.GL_TEXTURE_2D, self.fbo_tex)
+            for p, v in ((GL.GL_TEXTURE_MIN_FILTER, GL.GL_LINEAR), (GL.GL_TEXTURE_MAG_FILTER, GL.GL_LINEAR),
+                         (GL.GL_TEXTURE_WRAP_S, GL.GL_CLAMP_TO_EDGE), (GL.GL_TEXTURE_WRAP_T, GL.GL_CLAMP_TO_EDGE)):
+                GL.glTexParameteri(GL.GL_TEXTURE_2D, p, v)
+            GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RGB, rw, rh, 0, GL.GL_RGB, GL.GL_UNSIGNED_BYTE, None)
+            fbo = GL.glGenFramebuffers(1)
+            GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, fbo)
+            GL.glFramebufferTexture2D(GL.GL_FRAMEBUFFER, GL.GL_COLOR_ATTACHMENT0, GL.GL_TEXTURE_2D, self.fbo_tex, 0)
+            ok = GL.glCheckFramebufferStatus(GL.GL_FRAMEBUFFER) == GL.GL_FRAMEBUFFER_COMPLETE
+            GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
+            if not ok:
+                raise RuntimeError("framebuffer incompleto")
+            self.fbo, self.fbo_size = fbo, (rw, rh)
+            self.res = f"{rw}x{rh} → {W}x{H}"
+            log.info("efectos a %dx%d, salida %dx%d", rw, rh, W, H)
+        except Exception as e:
+            log.warning("sin dibujo a baja resolucion (%s): uso la resolucion completa", e)
+        finally:
+            self.cur = None
+            self._use(frozenset())
 
     UNIFORMS = ("texA", "texB", "hasA", "hasB", "fitA", "fitB", "clipA", "clipB", "zoom", "offset", "droste",
                 "zratio", "zmix", "repA", "repB", "ecoA", "ecoB",
@@ -563,6 +610,15 @@ class GL2Renderer:
                 GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RGBA, w, h, 0, GL.GL_RGBA, GL.GL_UNSIGNED_BYTE, img.tobytes())
                 sl["serial"] = sl["cache"].serial
             GL.glUniform1f(u[sl["has"]], 1.0 if img is not None else 0.0)
+        if self.fbo:
+            GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, self.fbo)
+            GL.glViewport(0, 0, *self.fbo_size)
+            GL.glDrawArrays(GL.GL_TRIANGLE_STRIP, 0, 4)
+            GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
+            GL.glUseProgram(self.blit)
+            self.cur = None  # la proxima vuelta reactiva el shader de efectos
+            GL.glActiveTexture(GL.GL_TEXTURE4)
+            GL.glBindTexture(GL.GL_TEXTURE_2D, self.fbo_tex)
         GL.glViewport(0, 0, *self.size)
         GL.glDrawArrays(GL.GL_TRIANGLE_STRIP, 0, 4)
         pygame.display.flip()

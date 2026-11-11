@@ -109,7 +109,7 @@ def main():
         frames += 1
         if now - t_stat >= 2:
             fps = frames / (now - t_stat)
-            server.stats = {"fps": round(fps, 1), "render": renderer.name}
+            server.stats = {"fps": round(fps, 1), "render": renderer.name, "res": getattr(renderer, "res", None)}
             n_log = getattr(server, "_nlog", 0) + 1
             server._nlog = n_log
             if n_log % 5 == 0:  # al log cada 10 s
