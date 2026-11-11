@@ -97,6 +97,7 @@ function onState(s) {
   }
   $('#quake').classList.toggle('on', s.quake);
   $('#beat-fx').classList.toggle('on', !!s.beat_fx);
+  if (s.trail != null) setFader('f-trail', s.trail);
   setFader('f-quake', s.quake_amount);
   setFader('f-zoom', s.zoom); $('#v-zoom').textContent = s.zoom.toFixed(1) + 'x';
   segOn('#screen', s.screen); segOn('#zoom-mode', s.zoom_mode);

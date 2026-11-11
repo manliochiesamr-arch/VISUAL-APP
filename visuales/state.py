@@ -113,6 +113,7 @@ class Mixer:
         self.quake = False
         self.quake_amount = 0.5
         self.beat_fx = True        # terremoto y glitch pegan en cada beat (en vez de constantes)
+        self.trail = 0.0           # estela: obturacion lenta (mezcla con el cuadro anterior)
         # texto en pantalla estilo VHS
         self.osd = [new_layer(p) for p in ("tl", "tr", "c", "bl")]  # 4 capas de texto
         # glitch en vivo (sobre todo lo que esta al aire) y color global
@@ -243,6 +244,8 @@ class Mixer:
             elif cmd == "onset":
                 self.beat.nudge()
                 return False  # no hace falta mandar el estado a todos
+            elif cmd == "trail":
+                self.trail = _clamp(data.get("value", 0))
             elif cmd == "beat_fx":
                 self.beat_fx = bool(data.get("on", not self.beat_fx))
             elif cmd == "clip_removed":
@@ -338,6 +341,7 @@ class Mixer:
                 "glitch": dict(self.glitch, time=now % 1000.0,
                                rgb=self.glitch["rgb"] * (0.2 + 0.8 * env),
                                tracking=self.glitch["tracking"] * (0.2 + 0.8 * env)),
+                "trail": self.trail * 0.93,  # nunca 1: la imagen tiene que poder cambiar
                 "texts": list(self.texts),
                 "osd": [dict(o, on=o["on"] and bool(o["text"].strip()) and (not o["blink"] or (beats % 1.0) < 0.6))
                         for o in self.osd],
@@ -351,6 +355,7 @@ class Mixer:
                     "strobe_color": self.strobe_color, "fade_time": self.fade_time,
                     "blackout_time": self.blackout_time, "zoom_cycle": self.zoom_cycle,
                     "quake_amount": self.quake_amount, "master": self.master, "beat_fx": self.beat_fx,
+                    "trail": self.trail,
                     "osd": [{k: o[k] for k in ("text", "pos", "size", "blink")} for o in self.osd],
                     "glitch": dict(self.glitch)}
 
@@ -374,7 +379,7 @@ class Mixer:
                     self.zoom_cycle = d["zoom_cycle"]
                 if "beat_fx" in d:
                     self.beat_fx = bool(d["beat_fx"])
-                for k in ("tint_amount", "quake_amount", "master"):
+                for k in ("tint_amount", "quake_amount", "master", "trail"):
                     if k in d:
                         setattr(self, k, _clamp(d[k]))
                 if "fade_time" in d:
@@ -431,6 +436,7 @@ class Mixer:
                 "osd": [dict(o) for o in self.osd],
                 "glitch": dict(self.glitch),
                 "texts": list(self.texts),
+                "trail": self.trail,
                 "bpm": round(self.beat.bpm, 1),
                 "beat": int(self.beat.beats()),
             }
