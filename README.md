@@ -34,7 +34,8 @@ Motor de visuales en vivo para Raspberry Pi 4. Tiene dos decks (A/B) con crossfa
 9. **Pestaña Biblioteca:** subir videos, renombrar y borrar. También se suben desde el PC con el navegador en la misma dirección.
 
 ### Videos
-- Solo **MP4 con H.264**. Los demás formatos (HEVC/H.265, .mov, .avi y otros) se rechazan con un aviso.
+- Videos **.mp4 / .mov / .m4v** (H.264, HEVC, ProRes y otros). Los demás formatos se rechazan con un aviso.
+- Imágenes **.jpg / .png / .gif / .webp / .bmp / .tif**: se convierten en un clip fijo que se repite (un .gif animado sigue animado). Desde el iPhone, la foto se sube como JPG.
 - Al subirse, cada video se convierte **una sola vez** a SD, conservando su proporción (16:9 queda en 1024x576 y 4:3 en 768x576, a 25 fps y sin audio), con prioridad baja. Cómo encaja en la pantalla se ajusta en la pestaña Clip. En la Pi 4 la conversión tarda más o menos lo mismo que dura el video. Mientras tanto aparece como "convirtiendo…". **Sube el material antes del show, no durante.**
 - Los videos quedan en `~/visuales-data/` en la Pi.
 

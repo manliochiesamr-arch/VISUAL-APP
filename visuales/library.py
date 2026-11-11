@@ -141,8 +141,8 @@ class Library:
     def new_upload_path(self, filename):
         """Devuelve (id, ruta destino) para un archivo entrante. Lanza ValueError si no es un video aceptado."""
         ext = os.path.splitext(filename)[1].lower()
-        if ext not in self.cfg.video_exts:
-            raise ValueError("Solo se aceptan videos " + " / ".join(self.cfg.video_exts))
+        if ext not in self.cfg.video_exts + self.cfg.image_exts:
+            raise ValueError("Solo se aceptan videos (mp4/mov) o imagenes (jpg/png/gif...)")
         cid = uuid.uuid4().hex[:10]
         return cid, self.cfg.incoming_dir / f"{cid}{ext}"
 
@@ -152,6 +152,8 @@ class Library:
             "id": cid, "name": name, "source": path.name, "file": f"{cid}.mp4",
             "status": "queued", "error": None, "duration": None, "added": time.time(),
         }
+        if path.suffix.lower() in self.cfg.image_exts:
+            clip["image"] = True
         # validacion rapida antes de encolar
         err = self._probe_error(path, clip)
         if err:
@@ -173,9 +175,11 @@ class Library:
         except Exception as e:
             return f"No se pudo leer el archivo ({e})"
         fmt = info.get("format", {})
+        vids = [s for s in info.get("streams", []) if s.get("codec_type") == "video"]
+        if clip.get("image"):
+            return None if vids else "No se pudo leer la imagen"
         if "mp4" not in fmt.get("format_name", ""):  # mp4 y mov comparten formato ("mov,mp4,...")
             return "El archivo no es un MP4/MOV valido"
-        vids = [s for s in info.get("streams", []) if s.get("codec_type") == "video"]
         if not vids:
             return "El archivo no tiene video"
         codec = vids[0].get("codec_name")
@@ -359,6 +363,15 @@ class Library:
         pr = c.get("probe") or {}
         t0 = time.time()
         attempts = []
+        if c.get("image"):
+            # imagen -> clip fijo de 2 s (se repite en loop). gif animado: se respeta la animacion
+            if src.suffix.lower() == ".gif":
+                inp = ["-ignore_loop", "1", "-i", str(src)]
+            else:
+                inp = ["-loop", "1", "-framerate", str(fps), "-t", "2", "-i", str(src)]
+            base = NICE + ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y"] + inp + ["-an"]
+            pr = {}
+            vf += ",format=yuv420p"
         if (pr.get("codec") == "h264" and pr.get("pix") == "yuv420p" and pr.get("h") and pr["h"] <= mh
                 and pr.get("w") and pr["w"] <= mw and abs((pr.get("fps") or 0) - fps) < 0.5):
             # ya esta en el formato final: se copia tal cual, sin recodificar (instantaneo)
@@ -367,6 +380,8 @@ class Library:
             # encoder por hardware de la Pi: varias veces mas rapido que libx264
             attempts.append(("hw", base + ["-vf", vf + ",format=yuv420p", "-c:v", "h264_v4l2m2m",
                                            "-b:v", "2500k", "-g", str(fps)] + tail))
+        if c.get("image"):
+            attempts.clear()  # 2 s de imagen fija: libx264 tarda menos de un segundo, sin probar el encoder por hardware
         attempts.append(("x264", base + ["-vf", vf, "-c:v", "libx264", "-preset", "superfast", "-crf", "23",
                                          "-g", str(fps), "-pix_fmt", "yuv420p"] + tail))
         for how, cmd in attempts:

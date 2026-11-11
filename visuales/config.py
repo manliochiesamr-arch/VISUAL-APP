@@ -39,6 +39,8 @@ class Config:
     # Solo se aceptan MP4 con video H.264 (evita HEVC/archivos pesados en la Pi)
     # Formatos aceptados: todo se convierte una vez a H.264 liviano al importar
     video_exts: tuple = (".mp4", ".mov", ".m4v")
+    # imagenes: se convierten en un clip fijo (los .gif animados se mantienen animados)
+    image_exts: tuple = (".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tif", ".tiff", ".heic", ".heif")
     allowed_codecs: tuple = ("h264", "hevc", "mpeg4", "prores", "mjpeg", "dnxhd", "vp9", "av1")
     max_upload_mb: int = field(default_factory=lambda: _env("MAX_UPLOAD_MB", 2048, int))
     # PIN para controlar desde la web (vacio = sin PIN). En la Pi: sudo /opt/visuales/install/set-pin.sh 1234

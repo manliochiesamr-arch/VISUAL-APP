@@ -449,7 +449,7 @@ function uploadOne(f) {
     row.innerHTML = `${esc(f.name)} <small></small><div class="bar"><div></div></div>`;
     $('#uploads').prepend(row);
     const bar = row.querySelector('.bar div'), info = row.querySelector('small');
-    if (!/\.(mp4|mov|m4v)$/i.test(f.name)) { row.classList.add('err'); info.textContent = 'rechazado: solo .mp4 / .mov'; return resolve(); }
+    if (!/\.(mp4|mov|m4v|jpe?g|png|gif|bmp|webp|tiff?|hei[cf])$/i.test(f.name)) { row.classList.add('err'); info.textContent = 'rechazado: solo videos .mp4/.mov o imágenes .jpg/.png/.gif'; return resolve(); }
     const fd = new FormData(); fd.append('file', f, f.name);
     const x = new XMLHttpRequest();
     x.open('POST', '/api/upload');

@@ -42,7 +42,7 @@ class UsbImporter:
             for dirpath, dirs, files in os.walk(mount):
                 dirs[:] = [d for d in dirs if not d.startswith(".") and d != "System Volume Information"]
                 for f in sorted(files):
-                    if f.lower().endswith(self.cfg.video_exts) and not f.startswith("._"):
+                    if f.lower().endswith(self.cfg.video_exts + self.cfg.image_exts) and not f.startswith("._"):
                         p = Path(dirpath) / f
                         try:
                             key = f"{f}|{p.stat().st_size}"
