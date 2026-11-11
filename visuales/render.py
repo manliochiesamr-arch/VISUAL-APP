@@ -72,8 +72,10 @@ vec3 sampleDeck(sampler2D tex, vec2 fit, vec3 clip, float rep, vec2 p) {
     return texture(tex, tc).rgb;
 }
 
-float hash(vec2 v) {
-    return fract(sin(dot(v, vec2(12.9898, 78.233))) * 43758.5453);
+float hash(vec2 v) {                                         // ruido sin sin(): barato en la Pi 3
+    vec3 p3 = fract(vec3(v.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
 }
 
 // corrimiento horizontal del tracking VHS para esta fila; band = intensidad de la banda que baja
@@ -155,42 +157,39 @@ vec3 scene(vec2 p) {
         c = mix(c, decks((p - offset) * zratio + offset), zmix);
     }
 #endif
-    if (hasF > 0.5) {                                        // texto con efectos: se mueve con la imagen
-        vec2 tf = p + 0.5;
-        if (tf.x >= 0.0 && tf.x <= 1.0 && tf.y >= 0.0 && tf.y <= 1.0) {
-            vec4 o = texture(texF, tf);
-            c = mix(c, o.rgb, o.a);
-        }
+#ifdef TEXTF
+    vec2 tf = p + 0.5;                                       // texto con efectos: se mueve con la imagen
+    if (tf.x >= 0.0 && tf.x <= 1.0 && tf.y >= 0.0 && tf.y <= 1.0) {
+        vec4 o = texture(texF, tf);
+        c = mix(c, o.rgb, o.a);
     }
+#endif
     return c;
 }
 
 void main() {
     vec2 p = (uv - 0.5) / zoom + offset;
+#ifdef TRACK
     float band = 0.0;
-    if (tracking > 0.001) p.x += tracking * trackDx(band);
+    p.x += tracking * trackDx(band);
+#endif
     vec3 c;
 #ifdef RGB
-    if (rgbSplit > 0.001) {
-        float dx = rgbSplit * 0.035;
-        c = vec3(scene(p + vec2(dx, 0.0)).r, scene(p).g, scene(p - vec2(dx, 0.0)).b);
-    } else {
-        c = scene(p);
-    }
+    float dx = rgbSplit * 0.035;
+    c = vec3(scene(p + vec2(dx, 0.0)).r, scene(p).g, scene(p - vec2(dx, 0.0)).b);
 #else
     c = scene(p);
 #endif
-    if (tracking > 0.001) {
-        float n = hash(uv * 400.0 + time);
-        c = mix(c, vec3(n), band * tracking * 0.6);
-    }
+#ifdef TRACK
+    c = mix(c, vec3(hash(uv * 400.0 + time)), band * tracking * 0.6);
+#endif
     c = hueSat(c, hueShift, saturation);
     c = mix(c, c * tint, tintAmount);
     c = mix(c, strobeColor, strobe);
-    if (hasT > 0.5) {
-        vec4 o = texture(texT, uv);
-        c = mix(c, o.rgb, o.a);
-    }
+#ifdef TEXT
+    vec4 o = texture(texT, uv);
+    c = mix(c, o.rgb, o.a);
+#endif
     color = vec4(c * master, 1.0);
 }
 """
@@ -201,7 +200,7 @@ GLITCH_UNIFORMS = (("rgbSplit", "rgb", 0.0), ("tracking", "tracking", 0.0), ("hu
                    ("saturation", "sat", 1.0), ("time", "time", 0.0))
 
 
-SHADER_FEATURES = ("ECHO", "ZMIX", "RGB", "CLIPGL")
+SHADER_FEATURES = ("ECHO", "ZMIX", "RGB", "TRACK", "CLIPGL", "TEXT", "TEXTF")
 
 
 def with_features(src, feats):
@@ -216,8 +215,14 @@ def shader_features(s):
     f = set()
     if s.get("zmix", 0.0) > 0.001:
         f.add("ZMIX")
-    if (s.get("glitch") or {}).get("rgb", 0.0) > 0.001:
+    g = s.get("glitch") or {}
+    if g.get("rgb", 0.0) > 0.001:
         f.add("RGB")
+    if g.get("tracking", 0.0) > 0.001:
+        f.add("TRACK")
+    for o in s.get("osd") or ():
+        if o.get("on"):
+            f.add("TEXTF" if o.get("fx") else "TEXT")
     for d in s["decks"].values():
         if not d.get("clip"):
             continue
@@ -442,7 +447,7 @@ class GL2Renderer:
         GL.glVertexAttribPointer(0, 2, GL.GL_FLOAT, GL.GL_FALSE, 0, ctypes.c_void_p(0))
         GL.glPixelStorei(GL.GL_UNPACK_ALIGNMENT, 1)
         # las variantes mas comunes, compiladas de entrada (compilar en pleno show traba un instante)
-        for feats in (("RGB",), ("CLIPGL",), ("ZMIX",), ("ECHO",)):
+        for feats in (("TEXT",), ("RGB",), ("TRACK",), ("CLIPGL",), ("ZMIX",), ("ECHO",)):
             self._use(frozenset(feats))
         self._use(frozenset())
         # textos: limpio (unidad 2) y con efectos (unidad 3)

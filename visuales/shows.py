@@ -9,11 +9,6 @@ from .util import read_json, write_json
 
 log = logging.getLogger("shows")
 
-# ajustes en vivo que se guardan con cada show
-LIVE_KEYS = ("bpm", "screen", "tint", "tint_amount", "strobe_div", "strobe_color",
-             "fade_time", "blackout_time", "zoom_cycle", "quake_amount", "master")
-
-
 class Shows:
     def __init__(self, cfg):
         self.file = cfg.data_dir / "shows.json"

@@ -164,7 +164,7 @@ def render(text, pos="tl", size=2, screen_aspect=4 / 3, color=(1.0, 1.0, 1.0), i
         img = np.zeros((H, W, 4), np.float32)
     lines = text.split("\n")
     s = max(1, min(4, int(size)))
-    cw, ch, gap = 6 * s, 9 * s, s            # ancho de letra con espacio, alto de linea
+    cw, ch = 6 * s, 9 * s                    # ancho de letra con espacio, alto de linea
     tw = max(len(l) for l in lines) * cw - s
     th = len(lines) * ch - 2 * s
     m = 12

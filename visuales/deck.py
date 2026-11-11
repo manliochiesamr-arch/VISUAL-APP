@@ -53,8 +53,6 @@ class Deck:
         self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, bufsize=fb * 2)
         self.q = queue.Queue(maxsize=4)
         threading.Thread(target=self._reader, args=(self.proc, self.q, fb), daemon=True).start()
-        self.t = 0.0
-        self.idx = 0
         log.info("deck %s <- %s (%dx%d)", self.name, path, self.w, self.h)
 
     @staticmethod

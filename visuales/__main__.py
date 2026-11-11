@@ -31,7 +31,6 @@ def main():
     ap.add_argument("--window", action="store_true", help="ventana en vez de pantalla completa (pruebas)")
     ap.add_argument("--renderer", choices=["auto", "gl", "gl2", "sdl"])
     ap.add_argument("--data", help="carpeta de datos")
-    ap.add_argument("--demo", action="store_true", help="generar clips de prueba si no hay videos")
     ap.add_argument("--max-seconds", type=float, default=0, help="salir despues de N segundos (pruebas)")
     args = ap.parse_args()
 
@@ -68,11 +67,6 @@ def main():
     for url in control_urls(cfg.http_port):
         print(f"\n  >>> Control: {url}", flush=True)
     print("  (en la ventana de video: Esc para salir)\n", flush=True)
-    if args.demo:
-        import threading
-        from .library import add_demo_clips
-        threading.Thread(target=add_demo_clips, args=(library,), daemon=True).start()
-
     os.environ.setdefault("SDL_VIDEO_MINIMIZE_ON_FOCUS_LOSS", "0")
     from . import render  # importa pygame recien aca
     import pygame

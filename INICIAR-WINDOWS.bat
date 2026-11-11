@@ -63,7 +63,7 @@ if exist "%~dp0datos\library.json" if not exist "%VISUALES_DATA%\library.json" (
   move "%~dp0datos" "%VISUALES_DATA%" >nul
 )
 echo  Videos y shows guardados en: %VISUALES_DATA%
-".venv\Scripts\python.exe" -m visuales --window --demo
+".venv\Scripts\python.exe" -m visuales --window
 echo.
 echo Visuales se cerro.
 pause

@@ -82,7 +82,6 @@ class Mixer:
 
     def __init__(self):
         self.lock = threading.RLock()
-        self.version = 0
         # decks: clip cargado y velocidad
         self.decks = {k: {"clip": None, "fx": dict(DEFAULT_FX)} for k in "AB"}
         self.xfade = 0.0           # 0 = A al aire, 1 = B al aire
@@ -114,9 +113,6 @@ class Mixer:
         self._last = time.monotonic()
 
     # ---------- helpers ----------
-    def touch(self):
-        self.version += 1
-
     def live_deck(self):
         return "A" if self.xfade < 0.5 else "B"
 
@@ -242,7 +238,6 @@ class Mixer:
                     self.texts.remove(data["clip"])
             else:
                 return False
-            self.touch()
             return True
 
     def _go(self, deck):
@@ -386,7 +381,6 @@ class Mixer:
             self.strobe = False
             self.quake = False
             self.texts = []  # al cambiar de show se apagan los textos
-            self.touch()
 
     def snapshot(self):
         """Estado para enviar al telefono."""

@@ -3,7 +3,6 @@ import json
 import logging
 import os
 import queue
-import re
 import shutil
 import subprocess
 import threading
@@ -113,6 +112,7 @@ class Library:
 
     def _save(self):
         with self.lock:
+            self._links = None
             write_json(self.index_file, list(self.clips.values()))
         self.on_change()
 
@@ -249,6 +249,7 @@ class Library:
             if not c or c.get("kind") != "text":
                 return False
             c["text"] = clean_text({**c.get("text", {}), **data})
+            self._links = None
             if "name" in data and str(data["name"]).strip():
                 c["name"] = str(data["name"]).strip()[:80]
         self._save_later()
@@ -259,8 +260,14 @@ class Library:
         if not clip_id:
             return []
         with self.lock:
-            return [c["id"] for c in self.clips.values()
-                    if c.get("kind") == "text" and c["text"].get("link") == clip_id]
+            links = getattr(self, "_links", None)
+            if links is None:  # se arma una vez y se tira cuando cambia la biblioteca (se consulta en cada cuadro)
+                links = {}
+                for c in self.clips.values():
+                    if c.get("kind") == "text" and c["text"].get("link"):
+                        links.setdefault(c["text"]["link"], []).append(c["id"])
+                self._links = links
+            return links.get(clip_id, [])
 
     def text_layers(self, ids, beats):
         """Capas para el render de los textos prendidos (mismo formato que el texto en vivo)."""
@@ -421,29 +428,3 @@ def probe_size(path):
         return int(w), int(h)
     except Exception:
         return 720, 576
-
-
-DEMOS = [
-    ("demo barras 16x9", "testsrc2=size=1280x720:rate=25"),
-    ("demo fractal 16x9", "mandelbrot=size=960x540:rate=25"),
-    ("demo vida 4x3", "life=size=320x240:mold=10:rate=25:ratio=0.1:death_color=#C83232:life_color=#00FF00,scale=640:480:flags=neighbor"),
-    ("demo plasma 16x9", "gradients=size=1280x720:rate=25:speed=0.02:n=4"),
-]
-
-
-def add_demo_clips(library):
-    """Genera clips de prueba con ffmpeg si la biblioteca esta vacia."""
-    if library.list():
-        return
-    for name, src in DEMOS:
-        try:
-            cid, dest = library.new_upload_path(name + ".mp4")
-            r = subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
-                                "-f", "lavfi", "-i", src, "-t", "10", "-c:v", "libx264", "-preset", "veryfast",
-                                "-pix_fmt", "yuv420p", str(dest)], capture_output=True, text=True, encoding="utf-8", errors="replace")
-            if r.returncode == 0:
-                library.add_uploaded(cid, name + ".mp4", dest)
-            else:
-                log.warning("no pude generar %s: %s", name, r.stderr[-200:])
-        except Exception:
-            log.exception("demo %s", name)
