@@ -214,7 +214,9 @@ class Server:
             modo = (self.cfg.data_dir / "red-modo.txt").read_text().strip() or "auto"
         except OSError:
             pass
-        info = {"modo": modo, "disponible": bool(shutil.which("nmcli")), "conexion": None, "conocidos": []}
+        # en modo test no se toca la red de la PC aunque tenga nmcli (Linux)
+        info = {"modo": modo, "disponible": bool(shutil.which("nmcli")) and not self.cfg.test,
+                "conexion": None, "conocidos": [], "test": self.cfg.test}
         if not info["disponible"]:
             return info
 
@@ -240,6 +242,8 @@ class Server:
 
     async def red_set(self, request):
         data = await request.json()
+        if self.cfg.test:
+            return web.json_response({"ok": False, "error": "Modo test: la red solo se cambia en la Pi"})
         ssid = str(data.get("ssid") or "").strip()
         if ssid:
             clave = str(data.get("clave") or "")
@@ -259,6 +263,11 @@ class Server:
         import shutil
         import subprocess
         out = dict(getattr(self, "stats", {}) or {})
+        if self.cfg.test:
+            import platform
+            out["test"] = True
+            out["equipo"] = platform.system() or "PC"
+            out["sim_pi3"] = self.cfg.sim_pi3
         try:  # CPU: diferencia contra la consulta anterior
             vals = [int(x) for x in open("/proc/stat").readline().split()[1:]]
             idle, total = vals[3] + vals[4], sum(vals)
@@ -281,7 +290,7 @@ class Server:
         try:
             out["carga"] = round(os.getloadavg()[0], 2)
             out["nucleos"] = os.cpu_count()
-        except OSError:
+        except (OSError, AttributeError):  # Windows no tiene getloadavg
             pass
         if shutil.which("vcgencmd"):
             try:

@@ -311,8 +311,8 @@ def open_window(cfg, opengl, gl_version=(3, 1)):
         pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MAJOR_VERSION, gl_version[0])
         pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MINOR_VERSION, gl_version[1])
     screen = pygame.display.set_mode(size, flags, vsync=1)
-    pygame.display.set_caption("visuales")
-    pygame.mouse.set_visible(False)
+    pygame.display.set_caption("visuales - MODO TEST" if cfg.test else "visuales")
+    pygame.mouse.set_visible(cfg.test)  # en la Pi no se ve el mouse; en la PC si
     return screen
 
 
@@ -781,7 +781,8 @@ def create(cfg):
     want = cfg.renderer
     order = {"gl": ["gl"], "gl2": ["gl2"], "sdl": []}.get(want)
     if order is None:  # auto
-        order = ["gl2"] if _is_pi3() else ["gl", "gl2"]
+        # en modo test se prefiere gl2: es el mismo render que usa la Pi 3 (con estela incluida)
+        order = ["gl2"] if _is_pi3() else (["gl2", "gl"] if cfg.test else ["gl", "gl2"])
     for name in order:
         try:
             if name == "gl":

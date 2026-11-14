@@ -75,21 +75,35 @@ Una TV de tubo no tiene entrada HDMI, así que hace falta un **conversor HDMI a 
 ### Render
 La app usa OpenGL (un shader hace la mezcla y los efectos). Si OpenGL no arranca en la placa, cambia sola a un render SDL que da el mismo resultado. Se puede forzar con `VISUALES_RENDERER=sdl` o `gl` en el servicio. En el log aparece cuál está activo y los fps.
 
-## Probar en una PC con Windows
+## Modo test en PC o Mac
 
+Es la misma app con la misma interfaz, pero corriendo en la computadora: el control se abre en el navegador y la salida de video en una ventana (simula la TV). Lo que solo existe en la Pi queda simulado o apagado:
+
+- **Red:** la sección Red de Biblioteca no aparece. La computadora no cambia de wifi.
+- **Pendrive:** se simula con una carpeta. Lo que copies a `visuales-datos/pendrive/mi-pendrive` se importa solo, igual que con un pendrive en la Pi.
+- **Estado de la Pi:** pasa a ser *Estado del equipo* (fps, render). Arriba aparece la etiqueta **TEST**.
+- **Render:** usa el mismo que la Pi 3 (OpenGL 2.1, con estela incluida).
+- **Imitar la Pi 3:** los lanzadores `…-PI3` dibujan clips y efectos a 360 líneas, como la Pi 3. Sirve para ver cómo se ve, no cuánto rinde: una PC es mucho más rápida.
+
+Los videos y shows quedan en la carpeta `visuales-datos` de tu usuario (`C:\Users\<usuario>\visuales-datos` o `/Users/<usuario>/visuales-datos`), fuera de la carpeta del programa. Así no se pierden al bajar una versión nueva.
+
+### Windows
 1. Descomprime el zip en cualquier carpeta.
-2. Haz doble clic en **INICIAR-WINDOWS.bat**. La primera vez descarga, dentro de la carpeta `tools`, un Python 3.12 portable propio, ffmpeg y las librerías, así que necesita internet y tarda unos minutos. No toca el Python que ya tengas instalado.
-3. Se abre una ventana con la **salida de video** (simula la TV) y el **control** en el navegador (http://localhost:8080). La primera vez se generan 4 clips de prueba.
-4. Para probar con el iPhone, conéctalo a la misma wifi que la PC y abre la dirección `http://192.168.x.x:8080` que muestra la consola. Si Windows pregunta por el firewall, permite el acceso en red privada.
+2. Haz doble clic en **INICIAR-WINDOWS.bat**, o en **INICIAR-WINDOWS-PI3.bat** para imitar la Pi 3. La primera vez descarga, dentro de `tools`, un Python 3.12 portable, ffmpeg y las librerías, así que necesita internet y tarda unos minutos. No toca el Python que ya tengas.
+3. Se abre la ventana de video y el navegador en http://localhost:8080.
+4. Para probar con el iPhone, conéctalo a la misma wifi y abre la dirección `http://192.168.x.x:8080` que muestra la consola. Si Windows pregunta por el firewall, permite el acceso en red privada.
 
-Los videos y shows quedan guardados en `C:\Users\<tu usuario>\visuales-datos`, fuera de la carpeta del programa. Así no se pierden al actualizar o al bajar una versión nueva desde GitHub.
+### Mac
+1. Descomprime el zip en cualquier carpeta.
+2. Haz **clic derecho → Abrir** sobre **INICIAR-MAC.command** (o **INICIAR-MAC-PI3.command**) y confirma *Abrir*. Hace falta solo la primera vez, porque macOS bloquea los scripts bajados de internet con doble clic.
+   - Si dice que no tiene permiso, abre Terminal en esa carpeta y ejecuta `bash INICIAR-MAC.command`.
+3. La primera vez descarga Python 3.12, las librerías y ffmpeg dentro de la carpeta `tools` (si ya tienes ffmpeg de Homebrew, usa ese). Tarda unos minutos.
+4. Se abre la ventana de video y Safari en http://localhost:8080. Si macOS pregunta si Python puede aceptar conexiones entrantes, permítelo para usarlo desde el iPhone.
 
-## Probar en un PC (Linux o Mac)
+### Linux
+`bash INICIAR-MAC.command` funciona igual. A mano: `pip install -r requirements.txt`, tener ffmpeg y correr `python -m visuales --test` (agrega `--pi3` para imitar la Pi 3).
 
-```bash
-pip install -r requirements.txt     # y tener ffmpeg instalado
-python -m visuales --window          # abrir http://localhost:8080 en el navegador
-```
+Para salir: **Esc** en la ventana de video, o cerrar la consola.
 
 ## Estructura
 - `visuales/state.py`: estado del mezclador y reloj de beat.

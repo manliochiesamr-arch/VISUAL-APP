@@ -38,19 +38,23 @@ set "PATH=%~dp0tools\ffmpeg\bin;%PATH%"
 echo [ok] ffmpeg
 
 rem ---------- 3. Entorno Python 3.12 + librerias ----------
-if exist ".venv\visuales-ok.txt" goto venv_ok
+rem visuales-ok2: se agrego PyOpenGL (render gl2, el mismo de la Pi 3)
+if exist ".venv\visuales-ok2.txt" goto venv_ok
+if exist ".venv\Scripts\python.exe" goto venv_libs
 if exist ".venv" rmdir /s /q ".venv"
 echo Preparando Python 3.12 y librerias, la primera vez tarda un poco...
 "%UV%" venv .venv --python 3.12
 if errorlevel 1 goto venv_err
+:venv_libs
 "%UV%" pip install --python ".venv\Scripts\python.exe" -r requirements.txt
 if errorlevel 1 goto venv_err
-echo ok> ".venv\visuales-ok.txt"
+echo ok> ".venv\visuales-ok2.txt"
 :venv_ok
 echo [ok] Python y librerias
 
 rem ---------- 4. Arrancar ----------
 echo.
+echo  MODO TEST: la red y el pendrive de la Pi estan simulados.
 echo  Se abre una ventana con la salida de video y el control en el navegador.
 echo  Para el iPhone usa la direccion que aparece abajo. Si Windows pregunta por el firewall, permitir en red privada.
 echo  Para salir: Esc en la ventana de video, o cerrar esta ventana.
@@ -63,7 +67,8 @@ if exist "%~dp0datos\library.json" if not exist "%VISUALES_DATA%\library.json" (
   move "%~dp0datos" "%VISUALES_DATA%" >nul
 )
 echo  Videos y shows guardados en: %VISUALES_DATA%
-".venv\Scripts\python.exe" -m visuales --window
+echo  Pendrive simulado: copia videos a %VISUALES_DATA%\pendrive\mi-pendrive
+".venv\Scripts\python.exe" -m visuales --test %*
 echo.
 echo Visuales se cerro.
 pause

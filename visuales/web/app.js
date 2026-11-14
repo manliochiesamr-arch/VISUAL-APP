@@ -280,6 +280,7 @@ let red = null;
 async function loadRed() {
   try { red = await fetch('/api/red').then((r) => r.json()); } catch { return; }
   segOn('#red-modo', red.modo);
+  if (red.test) { $('#red').hidden = true; return; }  // modo test en PC/Mac: la red es cosa de la Pi
   if (!red.disponible) { $('#red-estado').textContent = 'Acá no se puede cambiar la red (solo en la Pi).'; return; }
   $('#red-estado').textContent = red.conexion === 'visuales-ap' ? 'Ahora: red propia VISUALES'
     : red.conexion ? `Ahora: conectada al wifi "${red.conexion}"` : 'Ahora: sin wifi';
@@ -311,6 +312,11 @@ $('nav button[data-tab=lib]').addEventListener('click', loadRed);
 async function loadPi() {
   let s;
   try { s = await fetch('/api/sistema').then((r) => r.json()); } catch { return; }
+  if (s.test) {
+    $('#test-badge').hidden = false;
+    $('#test-badge').textContent = s.sim_pi3 ? 'TEST · Pi 3' : 'TEST';
+    $('#pi b').textContent = `Estado del equipo (modo test en ${s.equipo})`;
+  }
   const cells = [];
   const cell = (k, v, bad) => cells.push(`<div class="${bad ? 'bad' : ''}"><small>${k}</small><b>${v}</b></div>`);
   if (s.fps != null) cell('Video', `${s.fps} fps`, s.fps < 20);
@@ -335,6 +341,7 @@ setInterval(() => {
   if (libOn || Date.now() % 10000 < 2000) loadPi();
 }, 2000);
 $('nav button[data-tab=lib]').addEventListener('click', loadPi);
+loadPi();  // al abrir: muestra el aviso de modo test sin esperar
 $('#new-text').onclick = () => newResource('text');
 
 function renderLibrary() {

@@ -47,6 +47,10 @@ class Config:
     # carpeta donde se montan los pendrives (regla udev de install.sh)
     usb_dir: str = field(default_factory=lambda: _env("USB_DIR", "/media/visuales", str))
     pin: str = field(default_factory=lambda: _env("PIN", "", str))
+    # modo test en PC/Mac (--test o VISUALES_TEST=1): ventana, sin tocar la red, pendrive simulado en una carpeta
+    test: bool = field(default_factory=lambda: _env("TEST", False, bool))
+    # en modo test, imitar la carga de la Pi 3 (clips y efectos a 360 lineas, mismo render gl2)
+    sim_pi3: bool = field(default_factory=lambda: _env("SIM_PI3", False, bool))
 
     @property
     def clips_dir(self):
