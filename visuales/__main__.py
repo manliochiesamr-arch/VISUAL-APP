@@ -2,6 +2,7 @@
 import argparse
 import logging
 import os
+import threading
 import time
 from pathlib import Path
 
@@ -27,6 +28,29 @@ def control_urls(port):
     return urls
 
 
+def port_free(port):
+    """True si nadie atiende ese puerto. Se prueba conectando (otra app en localhost) y abriendo
+    en todas las interfaces sin reutilizar (en Mac/Windows abrir 0.0.0.0 puede "ganar" igual)."""
+    import socket
+    with socket.socket() as c:
+        c.settimeout(0.3)
+        if c.connect_ex(("127.0.0.1", port)) == 0:
+            return False
+    try:
+        with socket.socket() as s:
+            s.bind(("0.0.0.0", port))
+        return True
+    except OSError:
+        return False
+
+
+def pick_port(start, tries=20):
+    for p in range(start, start + tries):
+        if port_free(p):
+            return p
+    return start
+
+
 def setup_test(cfg):
     """Modo test en PC/Mac: misma app y misma web, sin las partes que solo existen en la Pi."""
     if cfg.sim_pi3:
@@ -35,6 +59,12 @@ def setup_test(cfg):
             cfg.clip_max_h = 360
         if "VISUALES_RENDER_H" not in os.environ:
             cfg.render_h = 360
+    if "VISUALES_HTTP_PORT" not in os.environ:
+        # en la PC puede haber otra app en 8080: se usa el siguiente libre (8081, 8082...)
+        port = pick_port(cfg.http_port)
+        if port != cfg.http_port:
+            print(f"\n  El puerto {cfg.http_port} esta ocupado por otra app: uso el {port}", flush=True)
+        cfg.http_port = port
     if "VISUALES_USB_DIR" not in os.environ:
         # pendrive simulado: una carpeta adentro de esta cuenta como un pendrive enchufado
         cfg.usb_dir = str(cfg.data_dir / "pendrive")
@@ -57,6 +87,8 @@ def main():
     ap.add_argument("--data", help="carpeta de datos")
     ap.add_argument("--test", action="store_true", help="modo test en PC/Mac (ventana, sin red ni pendrive reales)")
     ap.add_argument("--pi3", action="store_true", help="en modo test: imitar la Pi 3 (360 lineas)")
+    ap.add_argument("--port", type=int, help="puerto de la web (por defecto 8080; en modo test, el primero libre)")
+    ap.add_argument("--no-browser", action="store_true", help="en modo test: no abrir el navegador")
     ap.add_argument("--max-seconds", type=float, default=0, help="salir despues de N segundos (pruebas)")
     args = ap.parse_args()
 
@@ -66,6 +98,9 @@ def main():
         cfg.test = True
     if args.pi3:
         cfg.sim_pi3 = True
+    if args.port:
+        cfg.http_port = args.port
+        os.environ["VISUALES_HTTP_PORT"] = str(args.port)  # puerto pedido a mano: no buscar otro
     if args.window or cfg.test:
         cfg.fullscreen = False
     if args.renderer:
@@ -98,6 +133,9 @@ def main():
     for url in control_urls(cfg.http_port):
         print(f"\n  >>> Control: {url}", flush=True)
     print("  (en la ventana de video: Esc para salir)\n", flush=True)
+    if cfg.test and not args.no_browser:
+        import webbrowser
+        threading.Timer(1.5, webbrowser.open, (f"http://localhost:{cfg.http_port}",)).start()
     os.environ.setdefault("SDL_VIDEO_MINIMIZE_ON_FOCUS_LOSS", "0")
     from . import render  # importa pygame recien aca
     import pygame

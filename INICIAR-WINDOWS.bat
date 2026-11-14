@@ -59,7 +59,7 @@ echo  Se abre una ventana con la salida de video y el control en el navegador.
 echo  Para el iPhone usa la direccion que aparece abajo. Si Windows pregunta por el firewall, permitir en red privada.
 echo  Para salir: Esc en la ventana de video, o cerrar esta ventana.
 echo.
-start "" cmd /c "timeout /t 5 >nul & start http://localhost:8080"
+rem el navegador lo abre la app, en el puerto que haya quedado libre (8080, o 8081... si hay otra app)
 rem los videos y shows viven fuera de la carpeta del programa: sobreviven a actualizaciones
 set "VISUALES_DATA=%USERPROFILE%\visuales-datos"
 if exist "%~dp0datos\library.json" if not exist "%VISUALES_DATA%\library.json" (
