@@ -90,7 +90,7 @@ Los videos y shows quedan en la carpeta `visuales-datos` de tu usuario (`C:\User
 ### Windows
 1. Descomprime el zip en cualquier carpeta.
 2. Haz doble clic en **INICIAR-WINDOWS.bat**, o en **INICIAR-WINDOWS-PI3.bat** para imitar la Pi 3. La primera vez descarga, dentro de `tools`, un Python 3.12 portable, ffmpeg y las librerías, así que necesita internet y tarda unos minutos. No toca el Python que ya tengas.
-3. Se abre la ventana de video y el navegador en http://localhost:8080.
+3. Se abre la ventana de video y el navegador en http://localhost:8080 (si otra app usa ese puerto, en el 8081, 8082… y la consola dice cuál).
 4. Para probar con el iPhone, conéctalo a la misma wifi y abre la dirección `http://192.168.x.x:8080` que muestra la consola. Si Windows pregunta por el firewall, permite el acceso en red privada.
 
 ### Mac
@@ -98,12 +98,14 @@ Los videos y shows quedan en la carpeta `visuales-datos` de tu usuario (`C:\User
 2. Haz **clic derecho → Abrir** sobre **INICIAR-MAC.command** (o **INICIAR-MAC-PI3.command**) y confirma *Abrir*. Hace falta solo la primera vez, porque macOS bloquea los scripts bajados de internet con doble clic.
    - Si dice que no tiene permiso, abre Terminal en esa carpeta y ejecuta `bash INICIAR-MAC.command`.
 3. La primera vez descarga Python 3.12, las librerías y ffmpeg dentro de la carpeta `tools` (si ya tienes ffmpeg de Homebrew, usa ese). Tarda unos minutos.
-4. Se abre la ventana de video y Safari en http://localhost:8080. Si macOS pregunta si Python puede aceptar conexiones entrantes, permítelo para usarlo desde el iPhone.
+4. Se abre la ventana de video y el navegador en http://localhost:8080 (o el siguiente puerto libre, igual que en Windows). Si macOS pregunta si Python puede aceptar conexiones entrantes, permítelo para usarlo desde el iPhone.
 
 ### Linux
 `bash INICIAR-MAC.command` funciona igual. A mano: `pip install -r requirements.txt`, tener ffmpeg y correr `python -m visuales --test` (agrega `--pi3` para imitar la Pi 3).
 
 Para salir: **Esc** en la ventana de video, o cerrar la consola.
+
+Para fijar un puerto a mano: `--port 9000` o la variable `VISUALES_HTTP_PORT=9000`.
 
 ## Estructura
 - `visuales/state.py`: estado del mezclador y reloj de beat.

@@ -71,7 +71,7 @@ echo " Pendrive simulado: copia videos a $VISUALES_DATA/pendrive/mi-pendrive"
 echo " Si el Mac pregunta si Python puede aceptar conexiones entrantes: Permitir (para usarlo desde el iPhone)."
 echo " Para salir: Esc en la ventana de video, o cerrar esta ventana."
 echo
-( sleep 5; if command -v open >/dev/null; then open http://localhost:8080; else xdg-open http://localhost:8080 >/dev/null 2>&1; fi ) &
+# el navegador lo abre la app, en el puerto que haya quedado libre (8080, o 8081... si hay otra app)
 .venv/bin/python -m visuales --test "$@"
 echo
 echo "Visuales se cerro."
