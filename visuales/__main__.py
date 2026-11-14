@@ -3,6 +3,7 @@ import argparse
 import logging
 import os
 import time
+from pathlib import Path
 
 from .config import Config
 from .state import Mixer
@@ -26,22 +27,50 @@ def control_urls(port):
     return urls
 
 
+def setup_test(cfg):
+    """Modo test en PC/Mac: misma app y misma web, sin las partes que solo existen en la Pi."""
+    if cfg.sim_pi3:
+        # mismo tamano de trabajo que la Pi 3 (install.sh pone CLIP_H=360 y el render usa 360 lineas)
+        if "VISUALES_CLIP_H" not in os.environ:
+            cfg.clip_max_h = 360
+        if "VISUALES_RENDER_H" not in os.environ:
+            cfg.render_h = 360
+    if "VISUALES_USB_DIR" not in os.environ:
+        # pendrive simulado: una carpeta adentro de esta cuenta como un pendrive enchufado
+        cfg.usb_dir = str(cfg.data_dir / "pendrive")
+        demo = cfg.data_dir / "pendrive" / "mi-pendrive"
+        try:
+            demo.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
+    print("\n  ===== MODO TEST (PC/Mac) =====", flush=True)
+    print(f"  Datos: {cfg.data_dir}", flush=True)
+    print(f"  Pendrive simulado: copia videos a {Path(cfg.usb_dir) / 'mi-pendrive'}", flush=True)
+    if cfg.sim_pi3:
+        print("  Imitando la Pi 3: clips y efectos a 360 lineas", flush=True)
+
+
 def main():
     ap = argparse.ArgumentParser(description="Visuales en vivo para Raspberry Pi")
     ap.add_argument("--window", action="store_true", help="ventana en vez de pantalla completa (pruebas)")
     ap.add_argument("--renderer", choices=["auto", "gl", "gl2", "sdl"])
     ap.add_argument("--data", help="carpeta de datos")
+    ap.add_argument("--test", action="store_true", help="modo test en PC/Mac (ventana, sin red ni pendrive reales)")
+    ap.add_argument("--pi3", action="store_true", help="en modo test: imitar la Pi 3 (360 lineas)")
     ap.add_argument("--max-seconds", type=float, default=0, help="salir despues de N segundos (pruebas)")
     args = ap.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s: %(message)s")
     cfg = Config()
-    if args.window:
+    if args.test:
+        cfg.test = True
+    if args.pi3:
+        cfg.sim_pi3 = True
+    if args.window or cfg.test:
         cfg.fullscreen = False
     if args.renderer:
         cfg.renderer = args.renderer
     if args.data:
-        from pathlib import Path
         cfg.data_dir = Path(args.data)
 
     try:
@@ -51,6 +80,8 @@ def main():
         logging.getLogger().addHandler(fh)
     except Exception:
         pass
+    if cfg.test:
+        setup_test(cfg)
     mixer = Mixer()
     server = None
     library = Library(cfg, on_change=lambda: server and server.notify_library())

@@ -150,6 +150,7 @@ h3.sub { font-size: 13px; margin: 14px 0 4px; color: var(--dim); }
 .pistats b { font-variant-numeric: tabular-nums; }
 .pistats .bad { border-color: var(--live); }
 .pistats .bad b { color: var(--live); }
+.testbadge { padding: 4px 7px; border: 1px dashed #e0b000; color: #e0b000; border-radius: 6px; font-size: 11px; font-weight: 800; letter-spacing: .05em; }
 .piwarn { padding: 6px 9px; background: var(--live); border: 0; font-weight: 800; }
 .ask .swatches.big { grid-template-columns: repeat(5, 1fr); gap: 10px; margin: 12px 0; }
 
