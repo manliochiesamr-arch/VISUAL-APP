@@ -214,6 +214,8 @@ GLITCH_UNIFORMS = (("rgbSplit", "rgb", 0.0), ("tracking", "tracking", 0.0), ("hu
 
 
 SHADER_FEATURES = ("ECHO", "ZMIX", "RGB", "TRACK", "CLIPGL", "TEXT", "TEXTF")
+# las que se combinan en la Pi 3 (TEXT va en el segundo paso y TRAIL solo existe ahi)
+OPTIONAL_FEATURES = ("RGB", "TRACK", "ZMIX", "ECHO", "CLIPGL", "TEXTF", "TRAIL")
 
 
 def with_features(src, feats):
@@ -479,12 +481,29 @@ class GL2Renderer:
         GL.glEnableVertexAttribArray(0)
         GL.glVertexAttribPointer(0, 2, GL.GL_FLOAT, GL.GL_FALSE, 0, ctypes.c_void_p(0))
         GL.glPixelStorei(GL.GL_UNPACK_ALIGNMENT, 1)
-        # las variantes mas comunes, compiladas de entrada (compilar en pleno show traba un instante)
         self._setup_fbo(cfg)
+        self.gov = Governor(self.base_h, self.size[1])
+        self.t_last = time.monotonic()
+        self.burst_until = 0.0
+        self.timing = {"cpu": 0.0, "gpu": 0.0}
+        self.compiles = 0
+        # compilar una variante en pleno show traba la imagen un instante: se compilan de entrada
+        # las sueltas y las de a dos (las mas usadas); el resto en momentos sin nada al aire
         base = ("POST",) if self.fbo else ()
-        for feats in ((), ("TEXT",), ("RGB",), ("TRACK",), ("CLIPGL",), ("ZMIX",), ("ECHO",), ("TRAIL",)):
-            if self.fbo or "TRAIL" not in feats:
-                self._use(frozenset(base + feats))
+        opt = [f for f in OPTIONAL_FEATURES if self.fbo or f != "TRAIL"]
+        if not self.fbo:
+            opt.append("TEXT")
+        import itertools
+        todo = [()] + [(f,) for f in opt] + list(itertools.combinations(opt, 2))
+        self.pending = [frozenset(base + c) for c in itertools.combinations(opt, 3)]
+        t0 = time.monotonic()
+        for i, feats in enumerate(todo):
+            if i > len(opt) and time.monotonic() - t0 > 25:  # no demorar el arranque mas de ~25 s
+                self.pending = [frozenset(base + c) for c in todo[i:]] + self.pending
+                break
+            self._use(frozenset(base + feats))
+        log.info("%d variantes del shader compiladas en %.1fs (%d quedan para despues)",
+                 len(self.progs), time.monotonic() - t0, len(self.pending))
         self._use(frozenset(base))
         # textos: limpio (unidad 2) y con efectos (unidad 3)
         self.osd_slots = []
@@ -496,15 +515,20 @@ class GL2Renderer:
                          (GL.GL_TEXTURE_WRAP_S, GL.GL_CLAMP_TO_EDGE), (GL.GL_TEXTURE_WRAP_T, GL.GL_CLAMP_TO_EDGE)):
                 GL.glTexParameteri(GL.GL_TEXTURE_2D, p, v)
             self.osd_slots.append({"cache": OsdCache(fx), "tex": tex, "serial": -1, "unit": unit, "has": has})
+        # dos texturas por deck que se alternan: si se escribe en la misma que la GPU todavia esta
+        # leyendo (cuadro anterior), el driver frena todo hasta que termine
         self.tex = {}
         for unit, k in enumerate("AB"):
             GL.glActiveTexture(GL.GL_TEXTURE0 + unit)
-            t = GL.glGenTextures(1)
-            GL.glBindTexture(GL.GL_TEXTURE_2D, t)
-            for p, v in ((GL.GL_TEXTURE_MIN_FILTER, GL.GL_LINEAR), (GL.GL_TEXTURE_MAG_FILTER, GL.GL_LINEAR),
-                         (GL.GL_TEXTURE_WRAP_S, GL.GL_CLAMP_TO_EDGE), (GL.GL_TEXTURE_WRAP_T, GL.GL_CLAMP_TO_EDGE)):
-                GL.glTexParameteri(GL.GL_TEXTURE_2D, p, v)
-            self.tex[k] = {"id": t, "size": None, "serial": -1}
+            ids = []
+            for _ in range(2):
+                t = GL.glGenTextures(1)
+                GL.glBindTexture(GL.GL_TEXTURE_2D, t)
+                for p, v in ((GL.GL_TEXTURE_MIN_FILTER, GL.GL_LINEAR), (GL.GL_TEXTURE_MAG_FILTER, GL.GL_LINEAR),
+                             (GL.GL_TEXTURE_WRAP_S, GL.GL_CLAMP_TO_EDGE), (GL.GL_TEXTURE_WRAP_T, GL.GL_CLAMP_TO_EDGE)):
+                    GL.glTexParameteri(GL.GL_TEXTURE_2D, p, v)
+                ids.append(t)
+            self.tex[k] = {"ids": ids, "sizes": [None, None], "cur": 0, "serial": -1}
 
     def _setup_fbo(self, cfg):
         """Los efectos se dibujan en una imagen aparte y un segundo paso la pasa a la pantalla.
@@ -513,40 +537,53 @@ class GL2Renderer:
         GL = self.GL
         W, H = self.size
         rh = cfg.render_h or (360 if _is_pi3() else 0)
-        rh = min(rh, H) if rh else H
-        rw = max(2, round(W * rh / H))
-        self.fbo, self.res, self.flip = None, f"{W}x{H}", 0
+        self.base_h = min(rh, H) if rh else H
+        self.fbo, self.fbo_tex, self.res, self.flip = None, [], f"{W}x{H}", 0
         try:
             self.blit = self._program(VERT2, BLIT2)
             GL.glUseProgram(self.blit)
             self.bu = {n: GL.glGetUniformLocation(self.blit, n) for n in ("tex", "texT", "hasT", "master")}
             GL.glUniform1i(self.bu["tex"], 4)
             GL.glUniform1i(self.bu["texT"], 2)
-            self.fbo_tex, fbos = [], []
-            for _ in range(2):
-                t = GL.glGenTextures(1)
-                GL.glBindTexture(GL.GL_TEXTURE_2D, t)
-                for p, v in ((GL.GL_TEXTURE_MIN_FILTER, GL.GL_LINEAR), (GL.GL_TEXTURE_MAG_FILTER, GL.GL_LINEAR),
-                             (GL.GL_TEXTURE_WRAP_S, GL.GL_CLAMP_TO_EDGE), (GL.GL_TEXTURE_WRAP_T, GL.GL_CLAMP_TO_EDGE)):
-                    GL.glTexParameteri(GL.GL_TEXTURE_2D, p, v)
-                GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RGB, rw, rh, 0, GL.GL_RGB, GL.GL_UNSIGNED_BYTE, None)
-                f = GL.glGenFramebuffers(1)
-                GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, f)
-                GL.glFramebufferTexture2D(GL.GL_FRAMEBUFFER, GL.GL_COLOR_ATTACHMENT0, GL.GL_TEXTURE_2D, t, 0)
-                if GL.glCheckFramebufferStatus(GL.GL_FRAMEBUFFER) != GL.GL_FRAMEBUFFER_COMPLETE:
-                    GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
-                    raise RuntimeError("framebuffer incompleto")
-                GL.glClearColor(0, 0, 0, 1)
-                GL.glClear(GL.GL_COLOR_BUFFER_BIT)
-                self.fbo_tex.append(t)
-                fbos.append(f)
-            GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
-            self.fbo, self.fbo_size = fbos, (rw, rh)
-            self.res = f"{rw}x{rh} → {W}x{H}" if (rw, rh) != (W, H) else f"{W}x{H}"
-            log.info("efectos a %dx%d, salida %dx%d", rw, rh, W, H)
+            self._make_fbos(self.base_h)
         except Exception as e:
             log.warning("sin segundo paso (%s): sin estela y a resolucion completa", e)
+            self.fbo = None
         self.cur = None
+
+    def _make_fbos(self, rh):
+        """(Re)crea las dos imagenes internas con alto rh. Abajo del alto normal se agranda sin suavizar:
+        en vez de trabarse, la imagen se pixela (modo rescate)."""
+        GL = self.GL
+        W, H = self.size
+        rw = max(2, round(W * rh / H))
+        if self.fbo:
+            GL.glDeleteFramebuffers(2, self.fbo)
+            GL.glDeleteTextures(self.fbo_tex)
+        filt = GL.GL_LINEAR if rh >= self.base_h else GL.GL_NEAREST
+        self.fbo_tex, fbos = [], []
+        GL.glActiveTexture(GL.GL_TEXTURE4)
+        for _ in range(2):
+            t = GL.glGenTextures(1)
+            GL.glBindTexture(GL.GL_TEXTURE_2D, t)
+            for p, v in ((GL.GL_TEXTURE_MIN_FILTER, filt), (GL.GL_TEXTURE_MAG_FILTER, filt),
+                         (GL.GL_TEXTURE_WRAP_S, GL.GL_CLAMP_TO_EDGE), (GL.GL_TEXTURE_WRAP_T, GL.GL_CLAMP_TO_EDGE)):
+                GL.glTexParameteri(GL.GL_TEXTURE_2D, p, v)
+            GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RGB, rw, rh, 0, GL.GL_RGB, GL.GL_UNSIGNED_BYTE, None)
+            f = GL.glGenFramebuffers(1)
+            GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, f)
+            GL.glFramebufferTexture2D(GL.GL_FRAMEBUFFER, GL.GL_COLOR_ATTACHMENT0, GL.GL_TEXTURE_2D, t, 0)
+            if GL.glCheckFramebufferStatus(GL.GL_FRAMEBUFFER) != GL.GL_FRAMEBUFFER_COMPLETE:
+                GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
+                raise RuntimeError("framebuffer incompleto")
+            GL.glClearColor(0, 0, 0, 1)
+            GL.glClear(GL.GL_COLOR_BUFFER_BIT)
+            self.fbo_tex.append(t)
+            fbos.append(f)
+        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
+        self.fbo, self.fbo_size = fbos, (rw, rh)
+        self.res = f"{rw}x{rh} → {W}x{H}" if (rw, rh) != (W, H) else f"{W}x{H}"
+        log.info("efectos a %dx%d, salida %dx%d", rw, rh, W, H)
 
     UNIFORMS = ("texA", "texB", "hasA", "hasB", "fitA", "fitB", "clipA", "clipB", "zoom", "offset", "droste",
                 "zratio", "zmix", "repA", "repB", "ecoA", "ecoB",
@@ -572,7 +609,8 @@ class GL2Renderer:
                 for name, unit in (("texA", 0), ("texB", 1), ("texT", 2), ("texF", 3), ("texP", 5)):
                     GL.glUniform1i(u[name], unit)
                 self.progs[feats] = (prog, u)
-                log.info("shader %s listo", "+".join(sorted(feats)) or "basico")
+                self.compiles = getattr(self, "compiles", 0) + 1
+                log.debug("shader %s listo", "+".join(sorted(feats)) or "basico")
         if self.cur != feats:
             self.cur = feats
             prog, self.u = self.progs[feats]
@@ -595,9 +633,35 @@ class GL2Renderer:
         return prog
 
     def draw(self, decks, s):
+        t0 = time.monotonic()
+        interval, self.t_last = t0 - self.t_last, t0
+        avg = self.timing.setdefault("interval", 0.04)
+        if interval > 0.15 and interval > 3 * avg:
+            # se trabo un instante (algo pesado): el corte se disimula con un golpe de glitch
+            self.burst_until = t0 + 0.4
+        self.timing["interval"] = avg + 0.1 * (min(interval, 0.5) - avg)
+        # modo rescate: si la GPU no llega, se baja la resolucion interna (se ve pixelado, no congelado)
+        if self.fbo:
+            h = self.gov.update(self.timing["gpu"], t0)
+            if h != self.fbo_size[1]:
+                self._make_fbos(h)
         feats = shader_features(s)
         if self.fbo:  # el texto limpio va en el segundo paso
             feats = (feats - {"TEXT"}) | {"POST"} | ({"TRAIL"} if s.get("trail", 0.0) > 0.005 else set())
+        if t0 < self.burst_until:
+            burst = frozenset(feats | {"RGB", "TRACK"})
+            if burst in self.progs:  # solo si ya esta compilada (compilar ahora trabaria otra vez)
+                feats = burst
+                k = (self.burst_until - t0) / 0.4
+                g = dict(s.get("glitch") or {})
+                g["rgb"] = max(g.get("rgb", 0.0), 0.6 * k)
+                g["tracking"] = max(g.get("tracking", 0.0), 0.8 * k)
+                s = dict(s, glitch=g)
+        elif self.pending and (t0 - getattr(self, "t_comp", 0.0) > 3.0) and (
+                s["master"] < 0.02 or not any(d.get("clip") for d in s["decks"].values())):
+            # nada al aire (o en negro): aprovechar para compilar otra combinacion de efectos
+            self.t_comp = t0
+            self._use(self.pending.pop(0))
         self._use(frozenset(feats))
         GL, u = self.GL, self.u
         for unit, k in enumerate("AB"):
@@ -605,13 +669,19 @@ class GL2Renderer:
             has = d.frame is not None
             if has:
                 GL.glActiveTexture(GL.GL_TEXTURE0 + unit)
-                GL.glBindTexture(GL.GL_TEXTURE_2D, t["id"])
-                if t["size"] != (d.w, d.h):
-                    GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RGB, d.w, d.h, 0, GL.GL_RGB, GL.GL_UNSIGNED_BYTE, d.frame)
-                    t["size"], t["serial"] = (d.w, d.h), d.frame_serial
-                elif t["serial"] != d.frame_serial:
-                    GL.glTexSubImage2D(GL.GL_TEXTURE_2D, 0, 0, 0, d.w, d.h, GL.GL_RGB, GL.GL_UNSIGNED_BYTE, d.frame)
+                if t["serial"] != d.frame_serial:
+                    t["cur"] ^= 1
+                    i = t["cur"]
+                    GL.glBindTexture(GL.GL_TEXTURE_2D, t["ids"][i])
+                    if t["sizes"][i] != (d.w, d.h):
+                        GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RGB, d.w, d.h, 0, GL.GL_RGB,
+                                        GL.GL_UNSIGNED_BYTE, d.frame)
+                        t["sizes"][i] = (d.w, d.h)
+                    else:
+                        GL.glTexSubImage2D(GL.GL_TEXTURE_2D, 0, 0, 0, d.w, d.h, GL.GL_RGB, GL.GL_UNSIGNED_BYTE, d.frame)
                     t["serial"] = d.frame_serial
+                else:
+                    GL.glBindTexture(GL.GL_TEXTURE_2D, t["ids"][t["cur"]])
                 fx = s["decks"][k]["fx"]
                 GL.glUniform2f(u["fit" + k], *fit_scale(d.aspect, s["screen_aspect"], fx["fit"]))
                 GL.glUniform3f(u["clip" + k], fx["zoom"], -fx["panx"] * 0.5, -fx["pany"] * 0.5)
@@ -663,7 +733,53 @@ class GL2Renderer:
             GL.glBindTexture(GL.GL_TEXTURE_2D, self.fbo_tex[i])
         GL.glViewport(0, 0, *self.size)
         GL.glDrawArrays(GL.GL_TRIANGLE_STRIP, 0, 4)
+        t1 = time.monotonic()
+        GL.glFinish()  # esperar a la GPU aca: asi se sabe cuanto tarda (y no se acumulan cuadros atrasados)
+        t2 = time.monotonic()
         pygame.display.flip()
+        a = 0.15  # promedio movil
+        self.timing["cpu"] += a * ((t1 - t0) * 1000 - self.timing["cpu"])
+        self.timing["gpu"] += a * ((t2 - t1) * 1000 - self.timing["gpu"])
+
+    def stats(self):
+        return {"cpu_ms": round(self.timing["cpu"], 1), "gpu_ms": round(self.timing["gpu"], 1),
+                "rescate": self.fbo is not None and self.fbo_size[1] < self.base_h, "res": self.res}
+
+
+class Governor:
+    """Elige el alto de la imagen interna segun cuanto tarda la GPU por cuadro.
+    Baja un escalon si pasa de ~34 ms (no llega a 25 fps); sube si sobra tiempo un rato seguido."""
+    BUDGET_MS = 34.0
+
+    def __init__(self, base_h, out_h):
+        self.levels = sorted({max(72, int(base_h * f) // 2 * 2) for f in (1.0, 0.75, 0.5, 0.34)}, reverse=True)
+        self.i = 0
+        self.t_bad = self.t_good = None
+        self.t_change = 0.0
+
+    def update(self, gpu_ms, now):
+        if now - self.t_change < 1.0:  # dejar que se asiente el promedio despues de un cambio
+            return self.levels[self.i]
+        if gpu_ms > self.BUDGET_MS and self.i < len(self.levels) - 1:
+            self.t_bad = self.t_bad or now
+            if now - self.t_bad > 0.6:
+                self.i += 1
+                self.t_bad, self.t_change = None, now
+                log.info("modo rescate: GPU %.0f ms por cuadro -> imagen interna de %d lineas", gpu_ms, self.levels[self.i])
+        else:
+            self.t_bad = None
+        # subir solo si al escalon de arriba tambien le alcanzaria el tiempo (el costo crece con el area)
+        if self.i > 0:
+            ratio = (self.levels[self.i - 1] / self.levels[self.i]) ** 2
+            if gpu_ms * ratio < self.BUDGET_MS * 0.8:
+                self.t_good = self.t_good or now
+                if now - self.t_good > 4.0:
+                    self.i -= 1
+                    self.t_good, self.t_change = None, now
+                    log.info("modo rescate: vuelvo a %d lineas", self.levels[self.i])
+            else:
+                self.t_good = None
+        return self.levels[self.i]
 
 
 class SDLRenderer:

@@ -20,6 +20,7 @@ class Deck:
         self.idx = 0           # frames consumidos
         self.frame_serial = 0
         self.gen = None        # nombre del generador si el clip es generativo
+        self.late = 0          # veces que el video no llego a tiempo (decodificador atrasado)
 
     @property
     def aspect(self):
@@ -124,6 +125,7 @@ class Deck:
             except queue.Empty:
                 # decodificador atrasado: no acumular deuda (evita saltos despues)
                 self.t = self.idx / self.fps
+                self.late += 1
                 break
             if buf is None:
                 log.warning("deck %s: decoder termino", self.name)

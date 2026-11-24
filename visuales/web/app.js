@@ -320,6 +320,10 @@ async function loadPi() {
   const cells = [];
   const cell = (k, v, bad) => cells.push(`<div class="${bad ? 'bad' : ''}"><small>${k}</small><b>${v}</b></div>`);
   if (s.fps != null) cell('Video', `${s.fps} fps`, s.fps < 20);
+  if (s.gpu_ms != null) cell('GPU por cuadro', `${s.gpu_ms} ms`, s.gpu_ms > 34);
+  if (s.cpu_ms != null) cell('CPU por cuadro', `${s.cpu_ms} ms`, s.cpu_ms > 20);
+  if (s.atrasos) cell('Video atrasado', `${s.atrasos} cuadros`, s.atrasos > 10);
+  if (s.rescate) cell('Modo rescate', 'pixelado', true);
   if (s.cpu != null) cell('CPU', `${s.cpu}%`, s.cpu > 85);
   if (s.ram_total) cell('RAM', `${s.ram_usada} / ${s.ram_total} MB`, s.ram_usada / s.ram_total > 0.85);
   if (s.temp != null) cell('Temp.', `${s.temp} °C`, s.temp >= 75);

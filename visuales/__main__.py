@@ -178,7 +178,13 @@ def main():
         frames += 1
         if now - t_stat >= 2:
             fps = frames / (now - t_stat)
-            server.stats = {"fps": round(fps, 1), "render": renderer.name, "res": getattr(renderer, "res", None)}
+            st = {"fps": round(fps, 1), "render": renderer.name, "res": getattr(renderer, "res", None)}
+            if hasattr(renderer, "stats"):
+                st.update(renderer.stats())
+            st["atrasos"] = sum(d.late for d in decks.values())  # cuadros de video que no llegaron a tiempo
+            for d in decks.values():
+                d.late = 0
+            server.stats = st
             n_log = getattr(server, "_nlog", 0) + 1
             server._nlog = n_log
             if n_log % 5 == 0:  # al log cada 10 s
