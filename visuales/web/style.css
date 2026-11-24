@@ -167,3 +167,13 @@ h3.sub { font-size: 13px; margin: 14px 0 4px; color: var(--dim); }
   .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
   .preview { width: 100%; }
 }
+
+/* carpetas del show */
+.dirhead { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; text-align: left; padding: 8px 10px;
+  background: #1c1c22; border: 1px solid #333; border-radius: 8px; color: inherit; font-size: 14px; }
+.dirhead small { margin-left: auto; color: var(--dim); }
+.dirhead.closed { opacity: .8; }
+.dirhead.air { border-color: var(--live); }
+.order li.dir { background: #1c1c22; font-weight: 700; }
+.order li.indir span { padding-left: 14px; }
+.order li select { max-width: 110px; font-size: 12px; background: #222; color: inherit; border: 1px solid #444; border-radius: 6px; padding: 4px; }

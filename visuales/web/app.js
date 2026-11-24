@@ -121,41 +121,70 @@ function onState(s) {
 
 // ---------------- biblioteca / grilla ----------------
 function thumb(c) { return `/thumbs/${c.id}.jpg?v=${c.status}`; }
+const isDir = (id) => id.startsWith('dir:');
+const showClipIds = (show) => show.clips.filter((id) => !isDir(id));
+// grupos del show: [{dir, name, ids}], el primero (dir null) son los videos sueltos de arriba
+function showGroups(show) {
+  const groups = [{ dir: null, name: '', ids: [] }];
+  for (const id of show.clips) {
+    if (isDir(id)) { const d = id.slice(4); groups.push({ dir: d, name: (show.dirs || {})[d] || 'Carpeta', ids: [] }); }
+    else groups[groups.length - 1].ids.push(id);
+  }
+  return groups;
+}
 function renderGrid() {
   const g = $('#grid');
   const show = activeShow();
-  let ready = clips.filter((c) => c.status === 'ready' || c.status === 'processing' || c.status === 'queued');
-  if (show) ready = show.clips.map((id) => ready.find((c) => c.id === id)).filter(Boolean);
-  if (!ready.length) {
+  const ok = (c) => c.status === 'ready' || c.status === 'processing' || c.status === 'queued';
+  let ready = clips.filter(ok);
+  const find = (id) => ready.find((c) => c.id === id);
+  if (show) ready = showClipIds(show).map(find).filter(Boolean);
+  const hasDirs = show && show.clips.some(isDir);
+  if (!ready.length && !hasDirs) {
     g.innerHTML = show
       ? `<div class="empty">El show "${esc(show.name)}" no tiene videos.<br>Agregalos desde Biblioteca.</div>`
       : '<div class="empty">No hay videos. Subilos desde la pestaña Biblioteca.</div>';
     return;
   }
   g.innerHTML = '';
-  for (const c of ready) {
-    const d = document.createElement('div');
-    d.className = 'clip';
-    if (c.kind === 'text') { renderTextTile(d, c); g.appendChild(d); continue; }
-    if (c.status !== 'ready') d.classList.add('busy');
-    else if (c.kind === 'solid') d.style.background = solidCss(c.fx);
-    else d.style.backgroundImage = `url(${thumb(c)})`;
-    let tag = '';
-    if (state) {
-      const onA = state.decks.A.clip === c.id, onB = state.decks.B.clip === c.id;
-      const k = onA ? 'A' : onB ? 'B' : null;
-      if (k && state.live === k) { d.classList.add('live'); tag = 'AIRE'; }
-      else if (k) { d.classList.add('next'); tag = 'NEXT'; }
+  if (!hasDirs) { for (const c of ready) g.appendChild(clipTile(c)); return; }
+  const onAir = state ? [state.decks.A.clip, state.decks.B.clip] : [];
+  for (const grp of showGroups(show)) {
+    const cs = grp.ids.map(find).filter(Boolean);
+    if (grp.dir) {
+      const closed = (show.closed || []).includes(grp.dir);
+      const h = document.createElement('button');
+      h.className = 'dirhead' + (closed ? ' closed' : '') + (closed && grp.ids.some((id) => onAir.includes(id)) ? ' air' : '');
+      h.innerHTML = `<b>${closed ? '▸' : '▾'}</b> ${esc(grp.name)} <small>${cs.length}</small>`;
+      h.onclick = () => send('show_dir_toggle', { id: show.id, dir: grp.dir });
+      g.appendChild(h);
+      if (closed) continue;
     }
-    d.innerHTML = (tag ? `<b class="tag">${tag}</b>` : '') + `<span>${esc(c.status === 'ready' ? c.name : 'convirtiendo…')}</span>`;
-    d.onclick = () => {
-      if (c.status !== 'ready') return;
-      // 1er toque: precargar en NEXT. 2do toque sobre el mismo: GO
-      if (state && state.decks[state.next].clip === c.id) send('go');
-      else send('cue', { clip: c.id });
-    };
-    g.appendChild(d);
+    for (const c of cs) g.appendChild(clipTile(c));
   }
+}
+function clipTile(c) {
+  const d = document.createElement('div');
+  d.className = 'clip';
+  if (c.kind === 'text') { renderTextTile(d, c); return d; }
+  if (c.status !== 'ready') d.classList.add('busy');
+  else if (c.kind === 'solid') d.style.background = solidCss(c.fx);
+  else d.style.backgroundImage = `url(${thumb(c)})`;
+  let tag = '';
+  if (state) {
+    const onA = state.decks.A.clip === c.id, onB = state.decks.B.clip === c.id;
+    const k = onA ? 'A' : onB ? 'B' : null;
+    if (k && state.live === k) { d.classList.add('live'); tag = 'AIRE'; }
+    else if (k) { d.classList.add('next'); tag = 'NEXT'; }
+  }
+  d.innerHTML = (tag ? `<b class="tag">${tag}</b>` : '') + `<span>${esc(c.status === 'ready' ? c.name : 'convirtiendo…')}</span>`;
+  d.onclick = () => {
+    if (c.status !== 'ready') return;
+    // 1er toque: precargar en NEXT. 2do toque sobre el mismo: GO
+    if (state && state.decks[state.next].clip === c.id) send('go');
+    else send('cue', { clip: c.id });
+  };
+  return d;
 }
 // ---------------- solidos y textos ----------------
 function hsv(h, s, v) {
@@ -213,7 +242,7 @@ function linkOptions() {
   const ok = clips.filter((c) => c.kind !== 'text' && c.status === 'ready');
   const show = activeShow();
   if (!show) return ok;
-  return [...show.clips.map((id) => ok.find((c) => c.id === id)).filter(Boolean),
+  return [...showClipIds(show).map((id) => ok.find((c) => c.id === id)).filter(Boolean),
           ...ok.filter((c) => !show.clips.includes(c.id))];
 }
 $('#t-ren').onclick = async () => {
@@ -399,7 +428,7 @@ function activeShow() { return shows.shows.find((s) => s.id === shows.active) ||
 function renderShows() {
   const sel = $('#show-sel');
   sel.innerHTML = '<option value="">Todos los videos</option>' +
-    shows.shows.map((s) => `<option value="${s.id}">${esc(s.name)} (${s.clips.length})</option>`).join('');
+    shows.shows.map((s) => `<option value="${s.id}">${esc(s.name)} (${showClipIds(s).length})</option>`).join('');
   sel.value = shows.active || '';
   const box = $('#show-admin'), show = activeShow();
   // lista de todos los shows: tocar uno lo activa
@@ -415,23 +444,49 @@ function renderShows() {
       `<div class="row" style="margin-top:10px"><b>${esc(show.name)}</b>` +
       '<button class="small" id="sa-ren">✎</button><button class="small" id="sa-del">🗑</button></div>' +
       '<p class="hint">Lo que subas entra a este show. Con ＋ show agregás videos que ya están en la biblioteca. ' +
-      'BPM, tinte, pantalla y tiempos se guardan con el show.</p><ul class="order" id="sa-order"></ul></div>';
+      'BPM, tinte, pantalla y tiempos se guardan con el show. Las carpetas se abren y cierran tocándolas en la pestaña Show.</p>' +
+      '<button class="small wide" id="sa-dir">＋ Carpeta (tema)</button><ul class="order" id="sa-order"></ul></div>';
   }
   $$('.showchips button[data-id]').forEach((bt) => bt.onclick = () => send('show_select', { id: bt.dataset.id || null }));
   $('#sa-new').onclick = newShow;
   if (!show) return;
   $('#sa-ren').onclick = async () => { const n = await askText('Nombre del show', show.name); if (n) send('show_rename', { id: show.id, name: n }); };
   $('#sa-del').onclick = () => { if (confirm(`¿Borrar el show "${show.name}"? Los videos quedan en la biblioteca.`)) send('show_delete', { id: show.id }); };
+  $('#sa-dir').onclick = async () => {
+    const n = await askText('Nombre de la carpeta (ej: el tema)', '');
+    if (n) send('show_dir_add', { id: show.id, name: n });
+  };
   const ul = $('#sa-order');
-  show.clips.forEach((id, i) => {
+  const dirs = showGroups(show).filter((g) => g.dir);
+  let n = 0, inDir = null;
+  show.clips.forEach((id) => {
+    const li = document.createElement('li');
+    if (isDir(id)) {
+      const d = id.slice(4);
+      inDir = d;
+      li.className = 'dir';
+      li.innerHTML = `<span>📁 ${esc((show.dirs || {})[d] || 'Carpeta')}</span><button>↑</button><button>↓</button><button>✎</button><button>✕</button>`;
+      const [up, down, ren, rm] = li.querySelectorAll('button');
+      up.onclick = () => send('show_dir_move', { id: show.id, dir: d, dir_step: -1 });
+      down.onclick = () => send('show_dir_move', { id: show.id, dir: d, dir_step: 1 });
+      ren.onclick = async () => { const v = await askText('Nombre de la carpeta', show.dirs[d]); if (v) send('show_dir_rename', { id: show.id, dir: d, name: v }); };
+      rm.onclick = () => { if (confirm('¿Borrar la carpeta? Los videos quedan en el show (pasan a la carpeta de arriba).')) send('show_dir_delete', { id: show.id, dir: d }); };
+      ul.appendChild(li);
+      return;
+    }
     const c = clips.find((x) => x.id === id);
     if (!c) return;
-    const li = document.createElement('li');
-    li.innerHTML = `<span>${i + 1}. ${esc(c.name)}</span><button>↑</button><button>↓</button><button>✕</button>`;
+    n += 1;
+    if (inDir) li.className = 'indir';
+    const pick = dirs.length ? `<select title="Carpeta"><option value="">— suelto —</option>${dirs.map((g) =>
+      `<option value="${g.dir}"${g.dir === inDir ? ' selected' : ''}>📁 ${esc(g.name)}</option>`).join('')}</select>` : '';
+    li.innerHTML = `<span>${n}. ${esc(c.name)}</span>${pick}<button>↑</button><button>↓</button><button>✕</button>`;
     const [up, down, rm] = li.querySelectorAll('button');
     up.onclick = () => send('show_move', { id: show.id, clip: id, dir: -1 });
     down.onclick = () => send('show_move', { id: show.id, clip: id, dir: 1 });
     rm.onclick = () => send('show_toggle_clip', { id: show.id, clip: id });
+    const sel = li.querySelector('select');
+    if (sel) sel.onchange = () => send('show_move_to', { id: show.id, clip: id, dir: sel.value || null });
     ul.appendChild(li);
   });
 }
