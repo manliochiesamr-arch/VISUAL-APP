@@ -11,7 +11,7 @@ FITS = ("fit", "fill", "stretch")
 DEFAULT_FX = {"fit": "fit", "zoom": 1.0, "panx": 0.0, "pany": 0.0, "speed": 1.0,
               "hue": 0.0, "detail": 0.5,   # hue/detail: generadores (hue tambien color del solido)
               "sat": 1.0, "bright": 1.0,   # solo para los solidos de color
-              "g_rgb": 0.0, "g_trk": 0.0, "g_hue": 0.0, "g_sat": 1.0,  # glitch propio del clip
+              "g_hue": 0.0, "g_sat": 1.0,  # color propio del clip (el glitch RGB/tracking va solo en vivo)
               "rep": 1,  # repeticion: copias por lado (mosaico)
               "eco_n": 1, "eco_x": 0.3, "eco_y": 0.0, "eco_hue": 0.0}  # eco: copias corridas
 
@@ -36,7 +36,7 @@ def clean_fx(fx):
             pass
     for k, lo, hi in (("zoom", 0.25, 4.0), ("panx", -1.0, 1.0), ("pany", -1.0, 1.0), ("speed", 0.0, 4.0),
                       ("hue", 0.0, 1.0), ("detail", 0.0, 1.0), ("sat", 0.0, 1.0), ("bright", 0.0, 1.0),
-                      ("g_rgb", 0.0, 1.0), ("g_trk", 0.0, 1.0), ("g_hue", 0.0, 1.0), ("g_sat", 0.0, 2.0),
+                      ("g_hue", 0.0, 1.0), ("g_sat", 0.0, 2.0),
                       ("eco_x", -1.0, 1.0), ("eco_y", -1.0, 1.0), ("eco_hue", 0.0, 1.0)):
         if k in fx:
             try:

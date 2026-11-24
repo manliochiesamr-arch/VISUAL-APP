@@ -105,25 +105,14 @@ vec3 hueSat(vec3 c, float h, float s) {
     return clamp(mix(vec3(luma), c, s), 0.0, 1.0);
 }
 
-// un deck con su glitch propio (el del clip)
+// un deck con su color propio (tono y saturacion del clip). El glitch RGB/tracking es solo en vivo:
+// repetirlo por clip multiplicaba las lecturas de textura y trababa la Pi 3
 vec3 deck(sampler2D tex, vec2 fit, vec3 clip, float rep, vec4 g, vec2 p) {
-#ifndef CLIPGL
-    return sampleDeck(tex, fit, clip, rep, p);
-#else
-    float band = 0.0;
-    if (g.y > 0.001) p.x += g.y * trackDx(band);
-    vec3 c;
-    if (g.x > 0.001) {
-        float dx = g.x * 0.035;
-        c = vec3(sampleDeck(tex, fit, clip, rep, p + vec2(dx, 0.0)).r, sampleDeck(tex, fit, clip, rep, p).g,
-                 sampleDeck(tex, fit, clip, rep, p - vec2(dx, 0.0)).b);
-    } else {
-        c = sampleDeck(tex, fit, clip, rep, p);
-    }
-    if (g.y > 0.001) c = mix(c, vec3(hash(uv * 400.0 + time)), band * g.y * 0.6);
-    if (g.z > 0.001 || abs(g.w - 1.0) > 0.001) c = hueSat(c, g.z, g.w);
-    return c;
+    vec3 c = sampleDeck(tex, fit, clip, rep, p);
+#ifdef CLIPGL
+    c = hueSat(c, g.z, g.w);
 #endif
+    return c;
 }
 
 #ifdef ECHO
@@ -215,7 +204,8 @@ GLITCH_UNIFORMS = (("rgbSplit", "rgb", 0.0), ("tracking", "tracking", 0.0), ("hu
 
 SHADER_FEATURES = ("ECHO", "ZMIX", "RGB", "TRACK", "CLIPGL", "TEXT", "TEXTF")
 # las que se combinan en la Pi 3 (TEXT va en el segundo paso y TRAIL solo existe ahi)
-OPTIONAL_FEATURES = ("RGB", "TRACK", "ZMIX", "ECHO", "CLIPGL", "TEXTF", "TRAIL")
+OPTIONAL_FEATURES = ("ZMIX", "ECHO", "CLIPGL", "TEXTF", "TRAIL")
+POST_FEATURES = frozenset(("RGB", "TRACK"))  # en la Pi 3 van en el segundo paso (BLIT2)
 
 
 def with_features(src, feats):
@@ -244,7 +234,7 @@ def shader_features(s):
         fx = d["fx"]
         if fx.get("eco_n", 1) > 1:
             f.add("ECHO")
-        if (fx.get("g_rgb", 0) > 0.001 or fx.get("g_trk", 0) > 0.001 or fx.get("g_hue", 0) > 0.001
+        if (fx.get("g_hue", 0) > 0.001
                 or abs(fx.get("g_sat", 1.0) - 1.0) > 0.001):
             f.add("CLIPGL")
     return frozenset(f)
@@ -258,7 +248,7 @@ def clip_echo(fx):
 
 def clip_glitch(fx):
     """Glitch propio del clip para el shader: (rgb, tracking, tono, saturacion)."""
-    return (float(fx.get("g_rgb", 0.0)), float(fx.get("g_trk", 0.0)),
+    return (0.0, 0.0,
             float(fx.get("g_hue", 0.0)), float(fx.get("g_sat", 1.0)))
 
 
@@ -425,8 +415,28 @@ uniform sampler2D tex;
 uniform sampler2D texT;
 uniform float hasT;
 uniform float master;
+uniform float rgbSplit;
+uniform float tracking;
+uniform float time;
+""" + FRAG[FRAG.index("float hash("):FRAG.index("vec3 hueSat(")] + """
+vec3 img(vec2 q) { return texture2D(tex, vec2(q.x, 1.0 - q.y)).rgb; }
+// en la Pi 3 el glitch RGB/tracking va en este segundo paso, sobre la imagen ya armada: cuesta
+// 3 lecturas por pixel sin importar cuantos efectos (zoom infinito, eco, mosaico) tenga la imagen
 void main() {
-    vec3 c = texture2D(tex, vec2(uv.x, 1.0 - uv.y)).rgb;
+    vec2 q = uv;
+#ifdef TRACK
+    float band = 0.0;
+    q.x += tracking * trackDx(band);
+#endif
+#ifdef RGB
+    float dx = rgbSplit * 0.035;
+    vec3 c = vec3(img(q + vec2(dx, 0.0)).r, img(q).g, img(q - vec2(dx, 0.0)).b);
+#else
+    vec3 c = img(q);
+#endif
+#ifdef TRACK
+    c = mix(c, vec3(hash(uv * 400.0 + time)), band * tracking * 0.6);
+#endif
     if (hasT > 0.5) {
         vec4 o = texture2D(texT, uv);
         c = mix(c, o.rgb, o.a);
@@ -492,7 +502,7 @@ class GL2Renderer:
         base = ("POST",) if self.fbo else ()
         opt = [f for f in OPTIONAL_FEATURES if self.fbo or f != "TRAIL"]
         if not self.fbo:
-            opt.append("TEXT")
+            opt += ["TEXT", "RGB", "TRACK"]
         import itertools
         todo = [()] + [(f,) for f in opt] + list(itertools.combinations(opt, 2))
         self.pending = [frozenset(base + c) for c in itertools.combinations(opt, 3)]
@@ -540,11 +550,15 @@ class GL2Renderer:
         self.base_h = min(rh, H) if rh else H
         self.fbo, self.fbo_tex, self.res, self.flip = None, [], f"{W}x{H}", 0
         try:
-            self.blit = self._program(VERT2, BLIT2)
-            GL.glUseProgram(self.blit)
-            self.bu = {n: GL.glGetUniformLocation(self.blit, n) for n in ("tex", "texT", "hasT", "master")}
-            GL.glUniform1i(self.bu["tex"], 4)
-            GL.glUniform1i(self.bu["texT"], 2)
+            self.blits = {}
+            for feats in ((), ("RGB",), ("TRACK",), ("RGB", "TRACK")):
+                prog = self._program(VERT2, with_features(BLIT2, feats))
+                GL.glUseProgram(prog)
+                bu = {n: GL.glGetUniformLocation(prog, n)
+                      for n in ("tex", "texT", "hasT", "master", "rgbSplit", "tracking", "time")}
+                GL.glUniform1i(bu["tex"], 4)
+                GL.glUniform1i(bu["texT"], 2)
+                self.blits[frozenset(feats)] = (prog, bu)
             self._make_fbos(self.base_h)
         except Exception as e:
             log.warning("sin segundo paso (%s): sin estela y a resolucion completa", e)
@@ -645,19 +659,18 @@ class GL2Renderer:
             h = self.gov.update(self.timing["gpu"], t0)
             if h != self.fbo_size[1]:
                 self._make_fbos(h)
-        feats = shader_features(s)
-        if self.fbo:  # el texto limpio va en el segundo paso
-            feats = (feats - {"TEXT"}) | {"POST"} | ({"TRAIL"} if s.get("trail", 0.0) > 0.005 else set())
         if t0 < self.burst_until:
-            burst = frozenset(feats | {"RGB", "TRACK"})
-            if burst in self.progs:  # solo si ya esta compilada (compilar ahora trabaria otra vez)
-                feats = burst
-                k = (self.burst_until - t0) / 0.4
-                g = dict(s.get("glitch") or {})
-                g["rgb"] = max(g.get("rgb", 0.0), 0.6 * k)
-                g["tracking"] = max(g.get("tracking", 0.0), 0.8 * k)
-                s = dict(s, glitch=g)
-        elif self.pending and (t0 - getattr(self, "t_comp", 0.0) > 3.0) and (
+            k = (self.burst_until - t0) / 0.4
+            g = dict(s.get("glitch") or {})
+            g["rgb"] = max(g.get("rgb", 0.0), 0.6 * k)
+            g["tracking"] = max(g.get("tracking", 0.0), 0.8 * k)
+            s = dict(s, glitch=g)
+        feats = shader_features(s)
+        post = frozenset()
+        if self.fbo:  # el texto limpio y el glitch RGB/tracking van en el segundo paso
+            post = feats & POST_FEATURES
+            feats = (feats - {"TEXT"} - POST_FEATURES) | {"POST"} | ({"TRAIL"} if s.get("trail", 0.0) > 0.005 else set())
+        if t0 >= self.burst_until and self.pending and (t0 - getattr(self, "t_comp", 0.0) > 3.0) and (
                 s["master"] < 0.02 or not any(d.get("clip") for d in s["decks"].values())):
             # nada al aire (o en negro): aprovechar para compilar otra combinacion de efectos
             self.t_comp = t0
@@ -725,10 +738,15 @@ class GL2Renderer:
             GL.glViewport(0, 0, *self.fbo_size)
             GL.glDrawArrays(GL.GL_TRIANGLE_STRIP, 0, 4)
             GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
-            GL.glUseProgram(self.blit)
+            prog, bu = self.blits[post]
+            GL.glUseProgram(prog)
             self.cur = None  # la proxima vuelta reactiva el shader de efectos
-            GL.glUniform1f(self.bu["hasT"], 1.0 if self.osd_slots[0].get("on") else 0.0)
-            GL.glUniform1f(self.bu["master"], s["master"])
+            GL.glUniform1f(bu["hasT"], 1.0 if self.osd_slots[0].get("on") else 0.0)
+            GL.glUniform1f(bu["master"], s["master"])
+            g = s.get("glitch") or {}
+            GL.glUniform1f(bu["rgbSplit"], float(g.get("rgb", 0.0)))
+            GL.glUniform1f(bu["tracking"], float(g.get("tracking", 0.0)))
+            GL.glUniform1f(bu["time"], float(g.get("time", 0.0)))
             GL.glActiveTexture(GL.GL_TEXTURE4)
             GL.glBindTexture(GL.GL_TEXTURE_2D, self.fbo_tex[i])
         GL.glViewport(0, 0, *self.size)

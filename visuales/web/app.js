@@ -572,7 +572,6 @@ function renderClipPanel() {
   setFader('f-ceco', fx.eco_n || 1); $('#v-ceco').textContent = (fx.eco_n || 1) - 1;
   setFader('f-cecox', fx.eco_x ?? 0.3); setFader('f-cecoy', fx.eco_y || 0); setFader('f-cecoh', fx.eco_hue || 0);
   setFader('f-crep', fx.rep || 1); $('#v-crep').textContent = `${fx.rep || 1}×${fx.rep || 1}`;
-  setFader('f-cg-rgb', fx.g_rgb || 0); setFader('f-cg-trk', fx.g_trk || 0);
   setFader('f-cg-hue', fx.g_hue || 0); setFader('f-cg-sat', fx.g_sat ?? 1);
   $('#v-cg-sat').textContent = Math.round((fx.g_sat ?? 1) * 100) + '%';
   if (isSolid) {
