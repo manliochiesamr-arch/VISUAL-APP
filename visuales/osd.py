@@ -114,9 +114,20 @@ def render_layers(layers, screen_aspect=4 / 3):
     """Varias capas [(texto, lugar, tamano[, color])] en un solo lienzo. None si no hay nada que mostrar."""
     img = None
     for text, pos, size, *more in layers:
+        if not text:
+            continue
         color = more[0] if more and more[0] else (1.0, 1.0, 1.0)
         echo = more[1] if len(more) > 1 and more[1] else None
-        img = render(text, pos, size, screen_aspect, color=color, img=img, echo=echo) if text else img
+        alpha = more[2] if len(more) > 2 else 1.0
+        if alpha >= 0.999:
+            img = render(text, pos, size, screen_aspect, color=color, img=img, echo=echo)
+            continue
+        layer = render(text, pos, size, screen_aspect, color=color, echo=echo)  # aparte, para fundirlo
+        if layer is None:
+            continue
+        if img is None:
+            img = np.zeros_like(layer)
+        _over(img, layer, alpha)
     return img
 
 

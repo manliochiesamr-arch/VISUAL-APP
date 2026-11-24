@@ -13,6 +13,7 @@ DEFAULT_FX = {"fit": "fit", "zoom": 1.0, "panx": 0.0, "pany": 0.0, "speed": 1.0,
               "sat": 1.0, "bright": 1.0,   # solo para los solidos de color
               "g_hue": 0.0, "g_sat": 1.0,  # color propio del clip (el glitch RGB/tracking va solo en vivo)
               "rep": 1,  # repeticion: copias por lado (mosaico)
+              "lin": 0.0, "lout": 1.0,  # loop: parte del clip (0..1 de la duracion)
               "eco_n": 1, "eco_x": 0.3, "eco_y": 0.0, "eco_hue": 0.0}  # eco: copias corridas
 
 
@@ -37,7 +38,8 @@ def clean_fx(fx):
     for k, lo, hi in (("zoom", 0.25, 4.0), ("panx", -1.0, 1.0), ("pany", -1.0, 1.0), ("speed", 0.0, 4.0),
                       ("hue", 0.0, 1.0), ("detail", 0.0, 1.0), ("sat", 0.0, 1.0), ("bright", 0.0, 1.0),
                       ("g_hue", 0.0, 1.0), ("g_sat", 0.0, 2.0),
-                      ("eco_x", -1.0, 1.0), ("eco_y", -1.0, 1.0), ("eco_hue", 0.0, 1.0)):
+                      ("eco_x", -1.0, 1.0), ("eco_y", -1.0, 1.0), ("eco_hue", 0.0, 1.0),
+                      ("lin", 0.0, 0.98), ("lout", 0.02, 1.0)):
         if k in fx:
             try:
                 out[k] = max(lo, min(hi, float(fx[k])))
@@ -222,15 +224,12 @@ class Mixer:
                     o["size"] = int(data["size"])
                 if "blink" in data:
                     o["blink"] = bool(data["blink"])
-            elif cmd == "text_toggle":  # prender/apagar un recurso de texto
+            elif cmd == "text_toggle":  # prender/apagar un recurso de texto: uno solo a la vez
                 c = data.get("clip")
                 if not c:
                     return False
                 on = data.get("on", c not in self.texts)
-                if on and c not in self.texts:
-                    self.texts.append(c)
-                elif not on and c in self.texts:
-                    self.texts.remove(c)
+                self.texts = [c] if on else [t for t in self.texts if t != c]
             elif cmd == "texts_off":
                 self.texts = []
             elif cmd == "tap":
@@ -343,6 +342,7 @@ class Mixer:
                                tracking=self.glitch["tracking"] * (0.2 + 0.8 * env)),
                 "trail": self.trail * 0.93,  # nunca 1: la imagen tiene que poder cambiar
                 "texts": list(self.texts),
+                "text_fade": self.fade_time,
                 "osd": [dict(o, on=o["on"] and bool(o["text"].strip()) and (not o["blink"] or (beats % 1.0) < 0.6))
                         for o in self.osd],
             }
@@ -444,3 +444,36 @@ class Mixer:
 
 def _clamp(v):
     return max(0.0, min(1.0, float(v)))
+
+
+class TextFade:
+    """Recursos de texto: se ve uno solo y al cambiar se funden como los videos (el que sale
+    baja mientras el que entra sube, en el tiempo del fade). El fundido va en 8 pasos: cada paso
+    redibuja el texto en la CPU y en la Pi 3 conviene no hacerlo en cada cuadro."""
+    STEPS = 8
+
+    def __init__(self):
+        self.cur = self.prev = None
+        self.t0, self.dur, self.p_prev = 0.0, 0.0, 1.0
+
+    def update(self, target, fade_time, now):
+        """Devuelve [(id, opacidad)] de los textos a dibujar."""
+        if target != self.cur:
+            p = self._p(now)
+            if self.prev is not None and p < 0.5:  # cambio en pleno fundido: sale lo que mas se veia
+                self.cur = self.prev
+            self.prev, self.cur, self.t0, self.dur = self.cur, target, now, max(0.0, fade_time)
+        p = self._p(now)
+        if p >= 1.0:
+            self.prev = None
+        out = []
+        if self.prev:
+            out.append((self.prev, 1.0 - p))
+        if self.cur:
+            out.append((self.cur, p))
+        return [(t, a) for t, a in out if a > 0.0]
+
+    def _p(self, now):
+        if self.dur <= 0:
+            return 1.0
+        return round(min(1.0, (now - self.t0) / self.dur) * self.STEPS) / self.STEPS

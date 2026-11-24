@@ -120,6 +120,19 @@ class Library:
         with self.lock:
             return sorted(self.clips.values(), key=lambda c: c["added"], reverse=True)
 
+    def loop_of(self, clip_id, fx):
+        """(inicio, duracion) en segundos del loop in/out del clip, o None si es el clip entero."""
+        lin, lout = float(fx.get("lin", 0.0)), float(fx.get("lout", 1.0))
+        if lin <= 0.001 and lout >= 0.999:
+            return None
+        with self.lock:
+            c = self.clips.get(clip_id) or {}
+            dur = c.get("duration") or 0
+        if not dur or c.get("kind") in ("gen", "solid", "text"):
+            return None
+        ss = round(lin * dur, 2)
+        return ss, max(0.2, round(lout * dur, 2) - ss)
+
     def path_of(self, clip_id):
         """(ruta, ancho, alto) de un clip listo, o None."""
         with self.lock:
@@ -273,7 +286,7 @@ class Library:
                 self._links = links
             return links.get(clip_id, [])
 
-    def text_layers(self, ids, beats):
+    def text_layers(self, ids, beats, alpha=None):
         """Capas para el render de los textos prendidos (mismo formato que el texto en vivo)."""
         out = []
         with self.lock:
@@ -285,7 +298,8 @@ class Library:
                 on = bool(t["text"].strip()) and (not t["blink"] or (beats % 1.0) < 0.6)
                 out.append({"text": t["text"], "pos": t["pos"], "size": t["size"], "on": on,
                             "color": tuple(t["color"]), "fx": t.get("fx", False),
-                            "echo": (t.get("eco_n", 1), round(t.get("eco_x", 0.5), 2), round(t.get("eco_y", 0.0), 2))})
+                            "echo": (t.get("eco_n", 1), round(t.get("eco_x", 0.5), 2), round(t.get("eco_y", 0.0), 2)),
+                            "alpha": (alpha or {}).get(cid, 1.0)})
         return out
 
     def _save_later(self):

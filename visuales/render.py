@@ -61,8 +61,12 @@ uniform sampler2D texP; // cuadro anterior (estela)
 uniform float trail;     // estela: cuanto queda del cuadro anterior (0 = nada)
 uniform vec4 glA;        // glitch propio de cada clip: rgb, tracking, tono, saturacion
 uniform vec4 glB;
+uniform sampler2D texA2; // cuadro anterior de cada deck (camara lenta sin saltos)
+uniform sampler2D texB2;
+uniform float blA;       // cuanto del cuadro actual (1 = solo el actual)
+uniform float blB;
 
-vec3 sampleDeck(sampler2D tex, vec2 fit, vec3 clip, float rep, vec2 p) {
+vec3 sampleDeck(sampler2D tex, sampler2D tex2, float bl, vec2 fit, vec3 clip, float rep, vec2 p) {
     vec2 q = (p / clip.x + clip.yz) / fit;
     vec2 tc = q + 0.5;
     if (droste > 0.5) {
@@ -71,6 +75,10 @@ vec3 sampleDeck(sampler2D tex, vec2 fit, vec3 clip, float rep, vec2 p) {
         return vec3(0.0);
     }
     if (rep > 1.5) tc = fract(tc * rep);                      // mosaico rep x rep
+#ifdef BLEND
+    // camara lenta: fundido entre el cuadro anterior y el actual (no se ve el cuadro repetido)
+    if (bl < 0.999) return mix(texture(tex2, tc).rgb, texture(tex, tc).rgb, bl);
+#endif
     return texture(tex, tc).rgb;
 }
 
@@ -107,8 +115,8 @@ vec3 hueSat(vec3 c, float h, float s) {
 
 // un deck con su color propio (tono y saturacion del clip). El glitch RGB/tracking es solo en vivo:
 // repetirlo por clip multiplicaba las lecturas de textura y trababa la Pi 3
-vec3 deck(sampler2D tex, vec2 fit, vec3 clip, float rep, vec4 g, vec2 p) {
-    vec3 c = sampleDeck(tex, fit, clip, rep, p);
+vec3 deck(sampler2D tex, sampler2D tex2, float bl, vec2 fit, vec3 clip, float rep, vec4 g, vec2 p) {
+    vec3 c = sampleDeck(tex, tex2, bl, fit, clip, rep, p);
 #ifdef CLIPGL
     c = hueSat(c, g.z, g.w);
 #endif
@@ -118,14 +126,14 @@ vec3 deck(sampler2D tex, vec2 fit, vec3 clip, float rep, vec4 g, vec2 p) {
 #ifdef ECHO
 // eco: hasta 3 copias corridas, promediadas con peso decreciente (como una exposicion larga):
 // todas se ven dentro de la imagen sin subir el brillo. Max 3 copias: cada una es una lectura mas.
-vec3 echo(sampler2D tex, vec2 fit, vec3 clip, float rep, vec4 e, vec2 p, vec3 c) {
+vec3 echo(sampler2D tex, sampler2D tex2, float bl, vec2 fit, vec3 clip, float rep, vec4 e, vec2 p, vec3 c) {
     vec2 step = e.yz * 0.06;
     vec3 acc = c;
     float wsum = 1.0;
     for (int i = 1; i < 4; i++) {
         float fi = float(i);
         if (fi >= e.x) break;
-        vec3 k = sampleDeck(tex, fit, clip, rep, p - step * fi);
+        vec3 k = sampleDeck(tex, tex2, bl, fit, clip, rep, p - step * fi);
         if (e.w > 0.001) k = hueSat(k, fract(e.w * fi), 1.0);
         float w = 1.0 - fi / e.x * 0.75;
         acc += k * w;
@@ -136,11 +144,11 @@ vec3 echo(sampler2D tex, vec2 fit, vec3 clip, float rep, vec4 e, vec2 p, vec3 c)
 #endif
 
 vec3 decks(vec2 p) {
-    vec3 a = hasA > 0.5 ? deck(texA, fitA, clipA, repA, glA, p) : vec3(0.0);
-    vec3 b = hasB > 0.5 ? deck(texB, fitB, clipB, repB, glB, p) : vec3(0.0);
+    vec3 a = hasA > 0.5 ? deck(texA, texA2, blA, fitA, clipA, repA, glA, p) : vec3(0.0);
+    vec3 b = hasB > 0.5 ? deck(texB, texB2, blB, fitB, clipB, repB, glB, p) : vec3(0.0);
 #ifdef ECHO
-    if (hasA > 0.5 && ecoA.x > 1.5) a = echo(texA, fitA, clipA, repA, ecoA, p, a);
-    if (hasB > 0.5 && ecoB.x > 1.5) b = echo(texB, fitB, clipB, repB, ecoB, p, b);
+    if (hasA > 0.5 && ecoA.x > 1.5) a = echo(texA, texA2, blA, fitA, clipA, repA, ecoA, p, a);
+    if (hasB > 0.5 && ecoB.x > 1.5) b = echo(texB, texB2, blB, fitB, clipB, repB, ecoB, p, b);
 #endif
     return mix(a, b, xfade);
 }
@@ -202,9 +210,10 @@ GLITCH_UNIFORMS = (("rgbSplit", "rgb", 0.0), ("tracking", "tracking", 0.0), ("hu
                    ("saturation", "sat", 1.0), ("time", "time", 0.0))
 
 
+SLOWMO = 0.95  # por debajo de esta velocidad se funden los cuadros (camara lenta sin saltos)
 SHADER_FEATURES = ("ECHO", "ZMIX", "RGB", "TRACK", "CLIPGL", "TEXT", "TEXTF")
 # las que se combinan en la Pi 3 (TEXT va en el segundo paso y TRAIL solo existe ahi)
-OPTIONAL_FEATURES = ("ZMIX", "ECHO", "CLIPGL", "TEXTF", "TRAIL")
+OPTIONAL_FEATURES = ("ZMIX", "ECHO", "CLIPGL", "TEXTF", "TRAIL", "BLEND")
 POST_FEATURES = frozenset(("RGB", "TRACK"))  # en la Pi 3 van en el segundo paso (BLIT2)
 
 
@@ -232,6 +241,8 @@ def shader_features(s):
         if not d.get("clip"):
             continue
         fx = d["fx"]
+        if 0.0 < fx.get("speed", 1.0) < SLOWMO:
+            f.add("BLEND")
         if fx.get("eco_n", 1) > 1:
             f.add("ECHO")
         if (fx.get("g_hue", 0) > 0.001
@@ -266,7 +277,8 @@ class OsdCache:
             return None
         from . import osd
         key = (tuple((osd.expand(o.get("text", "")), o.get("pos"), o.get("size"),
-                      tuple(o.get("color") or (1.0, 1.0, 1.0)), tuple(o.get("echo") or ())) for o in layers),
+                      tuple(o.get("color") or (1.0, 1.0, 1.0)), tuple(o.get("echo") or ()),
+                      round(float(o.get("alpha", 1.0)), 3)) for o in layers),
                round(s["screen_aspect"], 2))
         if key != self.key:
             if not layers:
@@ -459,6 +471,7 @@ FRAG2 = (FRAG.replace("#version 140", "#version 120")
          .replace("in vec2 uv;", "varying vec2 uv;")
          .replace("out vec4 color;", "")
          .replace("texture(tex, tc)", "texture2D(tex, tc)")
+         .replace("texture(tex2, tc)", "texture2D(tex2, tc)")
          .replace("texture(texT, uv)", "texture2D(texT, uv)")
          .replace("texture(texF, tf)", "texture2D(texF, tf)")
          .replace("texture(texP, ", "texture2D(texP, ")
@@ -602,7 +615,7 @@ class GL2Renderer:
     UNIFORMS = ("texA", "texB", "hasA", "hasB", "fitA", "fitB", "clipA", "clipB", "zoom", "offset", "droste",
                 "zratio", "zmix", "repA", "repB", "ecoA", "ecoB",
                 "xfade", "master", "tint", "tintAmount", "strobe", "strobeColor", "texT", "hasT", "texF", "hasF",
-                "texP", "trail", "glA", "glB", *[n for n, _, _ in GLITCH_UNIFORMS])
+                "texP", "trail", "glA", "glB", "texA2", "texB2", "blA", "blB", *[n for n, _, _ in GLITCH_UNIFORMS])
 
     def _use(self, feats):
         """Activa la variante del shader con estas partes. La GPU de la Pi 3 (VideoCore IV) no puede
@@ -620,7 +633,7 @@ class GL2Renderer:
             else:
                 GL.glUseProgram(prog)
                 u = {n: GL.glGetUniformLocation(prog, n) for n in self.UNIFORMS}
-                for name, unit in (("texA", 0), ("texB", 1), ("texT", 2), ("texF", 3), ("texP", 5)):
+                for name, unit in (("texA", 0), ("texB", 1), ("texT", 2), ("texF", 3), ("texP", 5), ("texA2", 6), ("texB2", 7)):
                     GL.glUniform1i(u[name], unit)
                 self.progs[feats] = (prog, u)
                 self.compiles = getattr(self, "compiles", 0) + 1
@@ -695,6 +708,11 @@ class GL2Renderer:
                     t["serial"] = d.frame_serial
                 else:
                     GL.glBindTexture(GL.GL_TEXTURE_2D, t["ids"][t["cur"]])
+                # cuadro anterior (la otra textura del par) para la camara lenta
+                bl = d.blend if (t["sizes"][t["cur"] ^ 1] == (d.w, d.h)) else 1.0
+                GL.glActiveTexture(GL.GL_TEXTURE6 + unit)
+                GL.glBindTexture(GL.GL_TEXTURE_2D, t["ids"][t["cur"] ^ 1])
+                GL.glUniform1f(u["bl" + k], bl)
                 fx = s["decks"][k]["fx"]
                 GL.glUniform2f(u["fit" + k], *fit_scale(d.aspect, s["screen_aspect"], fx["fit"]))
                 GL.glUniform3f(u["clip" + k], fx["zoom"], -fx["panx"] * 0.5, -fx["pany"] * 0.5)

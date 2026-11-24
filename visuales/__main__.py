@@ -146,6 +146,8 @@ def main():
     frames, t_stat = 0, t_start
     t_retry = t_start
     running = True
+    from .state import TextFade
+    text_fade = TextFade()
     while running:
         for ev in (pygame.event.get() if pygame.display.get_init() else ()):
             if ev.type == pygame.QUIT or (ev.type == pygame.KEYDOWN and ev.key in (pygame.K_ESCAPE, pygame.K_q)):
@@ -156,12 +158,17 @@ def main():
         generators.set_audio(s["audio"])
         # recursos de texto: los prendidos a mano + los vinculados al clip que esta al aire
         live_clip = s["decks"]["A" if s["xfade"] < 0.5 else "B"]["clip"]
-        texts = s["texts"] + [t for t in library.linked_texts(live_clip) if t not in s["texts"]]
-        if texts:  # van despues del texto en vivo
-            s["osd"] = s["osd"] + library.text_layers(texts, s["beats"])
+        # un solo recurso de texto: el prendido a mano, o si no hay, el vinculado al clip al aire
+        linked = library.linked_texts(live_clip)
+        target = s["texts"][0] if s["texts"] else (linked[0] if linked else None)
+        shown = text_fade.update(target, s.get("text_fade", 0.0), now)
+        if shown:  # van despues del texto en vivo
+            s["osd"] = s["osd"] + library.text_layers([t for t, _ in shown], s["beats"],
+                                                      alpha={t: a for t, a in shown})
         for k, d in decks.items():
             clip = s["decks"][k]["clip"]
-            d.load(library.path_of(clip) if clip else None)
+            d.load(library.path_of(clip) if clip else None,
+                   library.loop_of(clip, s["decks"][k]["fx"]) if clip else None)
             # el deck que no se ve queda congelado en su primer frame
             # y arranca cuando empieza el crossfade (GO)
             weight = s["xfade"] if k == "B" else 1.0 - s["xfade"]

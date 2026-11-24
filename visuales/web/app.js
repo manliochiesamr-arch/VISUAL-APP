@@ -207,7 +207,9 @@ function textPreview(el, t, big) {
 function liveClip() { return state ? state.decks[state.live].clip : null; }
 function textOn(c) {
   if (!state) return false;
-  return (state.texts || []).includes(c.id) || (!!c.text.link && c.text.link === liveClip());
+  // se ve uno solo: el prendido a mano; si no hay ninguno, el vinculado al clip al aire
+  const t = state.texts || [];
+  return t.includes(c.id) || (!t.length && !!c.text.link && c.text.link === liveClip());
 }
 function renderTextTile(d, c) {
   const on = textOn(c);
@@ -628,7 +630,14 @@ function renderClipPanel() {
   segOn('#cfit', fx.fit);
   setFader('f-czoom', fx.zoom); $('#v-czoom').textContent = fx.zoom.toFixed(2) + 'x';
   setFader('f-cpanx', fx.panx); setFader('f-cpany', fx.pany);
-  setFader('f-cspeed', fx.speed); $('#v-cspeed').textContent = fx.speed.toFixed(2) + 'x';
+  setFader('f-cspeed', fx.speed); $('#v-cspeed').textContent = fx.speed.toFixed(2) + 'x' + (fx.speed < 0.95 ? ' (suave)' : '');
+  // loop in/out: solo videos (no generadores ni solidos)
+  const dur = (c && c.duration) || 0, isVid = !!c && !c.kind && dur > 0;
+  $$('.loopx').forEach((r) => { r.hidden = !isVid; });
+  const lin = fx.lin ?? 0, lout = fx.lout ?? 1;
+  setFader('f-clin', lin); setFader('f-clout', lout);
+  $('#v-clin').textContent = (lin * dur).toFixed(1) + 's';
+  $('#v-clout').textContent = lout >= 0.999 ? `fin (${dur.toFixed(1)}s)` : (lout * dur).toFixed(1) + 's';
   const isGen = !!(c && c.kind === 'gen');
   const isSolid = !!(c && c.kind === 'solid');
   $$('#tab-clip .genonly, #tab-clip .solidonly').forEach((el) => { el.hidden = true; });
