@@ -245,6 +245,14 @@ class Mixer:
                 return False  # no hace falta mandar el estado a todos
             elif cmd == "trail":
                 self.trail = _clamp(data.get("value", 0))
+            elif cmd == "fx_reset":
+                # apaga los efectos en vivo; quedan BPM, fade, master, pantalla, textos y colores elegidos
+                self.tint_amount = 0.0
+                self.strobe = False
+                self.zoom, self.zoom_mode = 1.0, "fixed"
+                self.quake = False
+                self.trail = 0.0
+                self.glitch = {"rgb": 0.0, "tracking": 0.0, "hue": 0.0, "sat": 1.0}
             elif cmd == "beat_fx":
                 self.beat_fx = bool(data.get("on", not self.beat_fx))
             elif cmd == "clip_removed":

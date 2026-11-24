@@ -837,3 +837,5 @@ async function start() {
   }
 }
 start();
+
+$('#fx-reset').onclick = () => send('fx_reset');  // sin confirmar: en pleno show tiene que ser un toque
