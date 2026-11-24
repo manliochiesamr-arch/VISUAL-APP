@@ -284,6 +284,8 @@ async function loadRed() {
   if (!red.disponible) { $('#red-estado').textContent = 'Acá no se puede cambiar la red (solo en la Pi).'; return; }
   $('#red-estado').textContent = red.conexion === 'visuales-ap' ? 'Ahora: red propia VISUALES'
     : red.conexion ? `Ahora: conectada al wifi "${red.conexion}"` : 'Ahora: sin wifi';
+  $('#red-ap').textContent = red.ap_clave ? 'VISUALES tiene clave: solo entra quien la sepa.'
+    : 'VISUALES está abierta: cualquiera puede conectarse (el control igual pide el PIN).';
   $('#red-conocidos').textContent = red.conocidos.length ? 'Wifis conocidos: ' + red.conocidos.join(', ') : 'Sin wifis conocidos guardados.';
 }
 async function setRed(data) {
@@ -306,6 +308,17 @@ $('#red-add').onclick = async () => {
   if (!ssid) return;
   const clave = await askText('Clave del wifi (vacío si es abierta)', '');
   setRed({ ssid, clave: clave || '' });
+};
+$('#red-ap-clave').onclick = async () => {
+  let clave = await askText('Clave nueva para VISUALES (8 a 63 caracteres). Para dejarla abierta escribí -', '');
+  if (!clave) return;
+  if (clave === '-') clave = '';
+  if (clave && clave.length < 8) { alert('La clave tiene que tener 8 caracteres o más'); return; }
+  const aviso = (red && red.conexion === 'visuales-ap')
+    ? 'Estás conectado por VISUALES: se va a cortar unos segundos. Después volvé a conectarte ' + (clave ? 'con la clave nueva.' : '(sin clave).')
+    : 'Se usa la próxima vez que la Pi levante VISUALES.';
+  if (confirm(aviso + (clave ? '\n\nSi algún día te la olvidás: archivo visuales-red.txt en la SD con la palabra "abierta".' : '') + '\n\n¿Seguir?'))
+    setRed({ ap_clave: clave });
 };
 $('nav button[data-tab=lib]').addEventListener('click', loadRed);
 // ---------------- estado de la Pi ----------------

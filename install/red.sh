@@ -8,6 +8,10 @@
 #
 # Rescate sin app: crear en la SD (particion "bootfs") un archivo visuales-red.txt con una sola
 # palabra: auto, visuales o wifi. Se aplica al arrancar y se renombra a visuales-red.usado.txt
+# La palabra "abierta" saca la clave de VISUALES (si te la olvidaste).
+#
+# Clave de VISUALES desde la app: red-wifi-nuevo.txt con "@visuales" en la linea 1 y la clave
+# en la 2 ("-" = abierta).
 #
 # Lo corre systemd como root: al arrancar (visuales-red.service), cada vez que la app cambia
 # el modo (visuales-red.path) y cuando agrega un wifi conocido (visuales-red-wifi.path).
@@ -91,9 +95,19 @@ esperar_wifi() {  # espera hasta $1 segundos un wifi conocido
 rfkill unblock wifi 2>/dev/null || true
 
 # ---- rescate desde la SD
+set_clave() {  # guarda la clave de VISUALES en red.conf (y la usa desde ahora)
+  CLAVE="$1"
+  mkdir -p /etc/visuales; touch $CONF
+  { grep -v '^CLAVE=' $CONF; echo "CLAVE='$CLAVE'"; } > $CONF.tmp && mv -f $CONF.tmp $CONF
+  chmod 600 $CONF
+}
+
 if [ -f $BOOT/visuales-red.txt ]; then
   m=$(tr -dc 'a-z' < $BOOT/visuales-red.txt)
-  case "$m" in auto|visuales|wifi) echo "$m" > "$MODE_FILE"; log "modo '$m' desde la SD" ;; esac
+  case "$m" in
+    auto|visuales|wifi) echo "$m" > "$MODE_FILE"; log "modo '$m' desde la SD" ;;
+    abierta) set_clave -; nmcli con delete visuales-ap >/dev/null 2>&1 || true; log "VISUALES sin clave (desde la SD)" ;;
+  esac
   mv -f $BOOT/visuales-red.txt $BOOT/visuales-red.usado.txt
 fi
 
@@ -101,7 +115,23 @@ fi
 if [ -f "$WIFI_FILE" ]; then
   NSSID=$(sed -n 1p "$WIFI_FILE" | tr -d '\r'); NPASS=$(sed -n 2p "$WIFI_FILE" | tr -d '\r')
   rm -f "$WIFI_FILE"
-  if [ -n "$NSSID" ]; then
+  if [ "$NSSID" = "@visuales" ]; then
+    # clave nueva para la red propia: se rearma la conexion y, si estaba al aire, se relevanta
+    VIEJA="$CLAVE"
+    set_clave "${NPASS:--}"
+    log "clave de VISUALES cambiada ($( [ "$CLAVE" = - ] && echo abierta || echo con clave ))"
+    if [ "$(wifi_actual)" = visuales-ap ]; then
+      nmcli con down visuales-ap >/dev/null 2>&1 || true
+      nmcli con delete visuales-ap >/dev/null 2>&1 || true
+      if ! ap_up; then
+        log "con clave no levanto: vuelvo a la anterior"
+        set_clave "$VIEJA"; nmcli con delete visuales-ap >/dev/null 2>&1 || true; ap_up
+      fi
+    else
+      nmcli con delete visuales-ap >/dev/null 2>&1 || true
+    fi
+    exit 0
+  elif [ -n "$NSSID" ]; then
     nmcli con delete "wifi-$NSSID" >/dev/null 2>&1 || true
     if [ -n "$NPASS" ]; then
       nmcli con add type wifi ifname wlan0 con-name "wifi-$NSSID" ssid "$NSSID" autoconnect yes \

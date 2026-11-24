@@ -217,6 +217,10 @@ class Server:
         # en modo test no se toca la red de la PC aunque tenga nmcli (Linux)
         info = {"modo": modo, "disponible": bool(shutil.which("nmcli")) and not self.cfg.test,
                 "conexion": None, "conocidos": [], "test": self.cfg.test}
+        try:
+            info["ap_clave"] = (self.cfg.data_dir / "red-ap-clave.txt").read_text().strip() == "si"
+        except OSError:
+            info["ap_clave"] = False
         if not info["disponible"]:
             return info
 
@@ -245,6 +249,16 @@ class Server:
         if self.cfg.test:
             return web.json_response({"ok": False, "error": "Modo test: la red solo se cambia en la Pi"})
         ssid = str(data.get("ssid") or "").strip()
+        if "ap_clave" in data:  # clave de la red propia VISUALES ("" = abierta)
+            clave = str(data.get("ap_clave") or "")
+            if clave and not (8 <= len(clave) <= 63 and clave.isprintable() and "'" not in clave):
+                return web.json_response({"ok": False, "error": "La clave tiene que tener entre 8 y 63 caracteres (sin comillas)"})
+            f = self.cfg.data_dir / "red-wifi-nuevo.txt"
+            f.write_text("@visuales\n" + (clave or "-") + "\n")
+            f.chmod(0o600)
+            (self.cfg.data_dir / "red-ap-clave.txt").write_text("si\n" if clave else "no\n")  # solo si tiene, no cual
+            log.info("clave de VISUALES -> %s", "con clave" if clave else "abierta")
+            return web.json_response({"ok": True})
         if ssid:
             clave = str(data.get("clave") or "")
             if clave and len(clave) < 8:
